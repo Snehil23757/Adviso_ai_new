@@ -104,3 +104,66 @@ def dataset_summary(rows: list[dict]) -> dict:
         "missing": missing,
         "numericSummary": numeric_summary,
     }
+
+
+def data_chat_response(question: str, rows: list[dict], columns: list[str]) -> str:
+    if not rows:
+        return "Upload a dataset first so I can answer questions about its rows, columns, and numeric patterns."
+
+    summary = dataset_summary(rows)
+    question_lower = question.lower().strip()
+    known_columns = columns or summary["columns"]
+    column_lookup = {column.lower(): column for column in known_columns}
+    mentioned_column = next((original for lower, original in column_lookup.items() if lower in question_lower), None)
+    numeric_summary = summary["numericSummary"]
+
+    if any(word in question_lower for word in ["row", "record", "count"]):
+        return f"The dataset contains {summary['rowCount']} rows and {summary['columnCount']} columns."
+
+    if any(word in question_lower for word in ["column", "field", "schema"]):
+        preview = ", ".join(summary["columns"][:8])
+        extra = "" if len(summary["columns"]) <= 8 else f", and {len(summary['columns']) - 8} more"
+        return f"The dataset has {summary['columnCount']} columns: {preview}{extra}."
+
+    if any(word in question_lower for word in ["missing", "null", "blank", "empty"]):
+        missing_items = [
+            f"{column}: {count}"
+            for column, count in summary["missing"].items()
+            if count > 0
+        ]
+        if not missing_items:
+            return "I did not find missing values in the uploaded dataset."
+        return "Missing value counts are " + "; ".join(missing_items[:10]) + "."
+
+    if mentioned_column and mentioned_column in numeric_summary:
+        stats = numeric_summary[mentioned_column]
+        if any(word in question_lower for word in ["average", "avg", "mean"]):
+            return f"The average value for {mentioned_column} is {stats['average']}."
+        if "min" in question_lower or "lowest" in question_lower:
+            return f"The minimum value for {mentioned_column} is {stats['min']}."
+        if "max" in question_lower or "highest" in question_lower:
+            return f"The maximum value for {mentioned_column} is {stats['max']}."
+        if "sum" in question_lower or "total" in question_lower:
+            total = sum(float(row.get(mentioned_column) or 0) for row in rows if isinstance(row.get(mentioned_column), int | float))
+            return f"The total value for {mentioned_column} is {round(total, 2)}."
+        return (
+            f"For {mentioned_column}, min is {stats['min']}, max is {stats['max']}, "
+            f"and average is {stats['average']}."
+        )
+
+    if any(word in question_lower for word in ["average", "avg", "mean", "min", "max", "summary", "insight"]):
+        if not numeric_summary:
+            return "I found no numeric columns to summarize. I can still answer schema, row-count, or missing-value questions."
+        items = [
+            f"{column}: avg {stats['average']}, min {stats['min']}, max {stats['max']}"
+            for column, stats in numeric_summary.items()
+        ]
+        return "Numeric summary: " + "; ".join(items[:6]) + "."
+
+    numeric_columns = list(numeric_summary.keys())
+    numeric_text = ", ".join(numeric_columns[:5]) if numeric_columns else "none detected"
+    return (
+        f"I can analyze this dataset locally through the backend API. It has {summary['rowCount']} rows, "
+        f"{summary['columnCount']} columns, and numeric fields: {numeric_text}. "
+        "Try asking about row count, missing values, columns, or the average/min/max of a specific numeric field."
+    )

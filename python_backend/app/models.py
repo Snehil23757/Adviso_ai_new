@@ -84,3 +84,15 @@ class ForecastRequest(BaseModel):
 
 class DatasetSummaryRequest(BaseModel):
     rows: list[dict]
+
+
+class ChatRequest(BaseModel):
+    question: str
+    rows: list[dict]
+    columns: list[str] = []
+
+
+class ChatResponse(BaseModel):
+    success: bool
+    answer: str
+    source: Literal["local"]

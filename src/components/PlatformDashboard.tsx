@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   FileSpreadsheet, BarChart2, BrainCircuit, MessageSquare, 
   Lightbulb, DollarSign, TrendingUp, Compass, Leaf, Shield, Target,
-  LogOut, UploadCloud, PieChart as PieChartIcon
+  LogOut, UploadCloud, PieChart as PieChartIcon, Send, Database, ArrowRight
 } from "lucide-react";
 import Papa from "papaparse";
 import { 
@@ -18,6 +18,7 @@ interface PlatformDashboardProps {
 }
 
 type TabType = "Overview" | "Charts" | "AI" | "Chat" | "Ideas" | "Profit" | "Forecast" | "Budget" | "Sustainability" | "Competitor" | "KPI";
+type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export default function PlatformDashboard({ userEmail, onLogout }: PlatformDashboardProps) {
   const [activeTab, setActiveTab] = useState<TabType>("Overview");
@@ -26,6 +27,9 @@ export default function PlatformDashboard({ userEmail, onLogout }: PlatformDashb
   const [data, setData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
   
   // File Upload & Validation State
   const [isDragging, setIsDragging] = useState(false);
@@ -143,6 +147,8 @@ export default function PlatformDashboard({ userEmail, onLogout }: PlatformDashb
       setStagedData(null);
       setStagedColumns([]);
       setPreviewColumn(null);
+      setChatMessages([]);
+      setChatInput("");
     }
   };
 
@@ -150,6 +156,48 @@ export default function PlatformDashboard({ userEmail, onLogout }: PlatformDashb
     setStagedData(null);
     setStagedColumns([]);
     setPreviewColumn(null);
+  };
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const question = chatInput.trim();
+    if (!question || isChatLoading) return;
+
+    setChatMessages(prev => [...prev, { role: "user", content: question }]);
+    setChatInput("");
+    setIsChatLoading(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          columns,
+          rows: data.slice(0, 1000),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Data chat API returned an error.");
+      }
+
+      const result = await response.json();
+      setChatMessages(prev => [
+        ...prev,
+        { role: "assistant", content: result.answer || "I could not generate an answer for that question." },
+      ]);
+    } catch {
+      setChatMessages(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I could not reach the data chat backend. Please confirm the Python API server is running.",
+        },
+      ]);
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   const tabs: {id: TabType, label: string, icon: React.ReactNode}[] = [
@@ -379,17 +427,53 @@ export default function PlatformDashboard({ userEmail, onLogout }: PlatformDashb
               </div>
               <div className="flex-1 p-6 overflow-y-auto space-y-4">
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-brand-primary/20 flex items-center justify-center shrink-0">🤖</div>
+                  <div className="w-8 h-8 rounded-full bg-brand-primary/20 flex items-center justify-center shrink-0 text-[10px] font-bold">AI</div>
                   <div className="bg-white/5 border border-white/10 rounded-xl rounded-tl-none p-4 text-sm text-white/90">
                     I am examining your {data.length} rows of data. The dataset contains fields such as {columns.slice(0,3).join(", ")}. How can I help you extract value from this payload today?
                   </div>
                 </div>
+                {chatMessages.map((message, index) => (
+                  <div key={index} className={`flex gap-3 ${message.role === "user" ? "justify-end" : ""}`}>
+                    {message.role === "assistant" && (
+                      <div className="w-8 h-8 rounded-full bg-brand-primary/20 flex items-center justify-center shrink-0 text-[10px] font-bold">AI</div>
+                    )}
+                    <div className={`max-w-[78%] border rounded-xl p-4 text-sm leading-relaxed ${
+                      message.role === "user"
+                        ? "bg-brand-primary text-white border-brand-primary rounded-tr-none"
+                        : "bg-white/5 border-white/10 text-white/90 rounded-tl-none"
+                    }`}>
+                      {message.content}
+                    </div>
+                  </div>
+                ))}
+                {isChatLoading && (
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-brand-primary/20 flex items-center justify-center shrink-0 text-[10px] font-bold">AI</div>
+                    <div className="bg-white/5 border border-white/10 rounded-xl rounded-tl-none p-4 text-sm text-brand-text-secondary">
+                      Analyzing dataset...
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="p-4 border-t border-white/10 bg-black/50">
-                <div className="relative">
-                  <input type="text" placeholder="Ask a question about the data..." className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm outline-none focus:border-brand-primary" />
-                  <button className="absolute right-2 top-2 p-1.5 bg-brand-primary rounded-lg text-white"><ArrowRightIcon className="w-4 h-4" /></button>
-                </div>
+                <form onSubmit={handleChatSubmit} className="relative">
+                  <input
+                    type="text"
+                    placeholder="Ask about rows, columns, missing values, averages, totals..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-4 pr-12 text-sm outline-none focus:border-brand-primary"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    disabled={isChatLoading}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isChatLoading || !chatInput.trim()}
+                    className="absolute right-2 top-2 p-1.5 bg-brand-primary rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Send chat question"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </form>
               </div>
             </div>
           )}
@@ -664,6 +748,5 @@ function DatabaseIcon(props: any) {
   return <Database {...props} />;
 }
 function ArrowRightIcon(props: any) {
-  return <path d="M5 12h14m-7-7 7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props} />;
+  return <ArrowRight {...props} />;
 }
-import { Database } from "lucide-react";

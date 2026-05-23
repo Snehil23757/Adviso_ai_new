@@ -11,6 +11,8 @@ from app.models import (
     AnalyzeResponse,
     BudgetRequest,
     BusinessAnalysisRequest,
+    ChatRequest,
+    ChatResponse,
     CompetitorRequest,
     DatasetSummaryRequest,
     ForecastRequest,
@@ -20,6 +22,7 @@ from app.models import (
 from app.services.analytics import (
     budget_summary,
     competitor_summary,
+    data_chat_response,
     dataset_summary,
     forecast_values,
     profit_summary,
@@ -104,6 +107,12 @@ def forecast(payload: ForecastRequest) -> dict:
 @app.post("/api/dataset/summary")
 def summarize_dataset(payload: DatasetSummaryRequest) -> dict:
     return dataset_summary(payload.rows)
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+def chat(payload: ChatRequest) -> ChatResponse:
+    answer = data_chat_response(payload.question, payload.rows, payload.columns)
+    return ChatResponse(success=True, answer=answer, source="local")
 
 
 frontend_dist = Path(__file__).resolve().parents[2] / "dist"
