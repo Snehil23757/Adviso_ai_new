@@ -1,5 +1,6 @@
 import React from "react";
 import { Cpu, Linkedin, Mail, ShieldCheck } from "lucide-react";
+import BrandLogo from "../components/BrandLogo.tsx";
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -64,8 +65,8 @@ export default function Footer() {
           {/* Identity col */}
           <div className="col-span-2 space-y-4 text-left">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-brand-primary flex items-center justify-center">
-                <Cpu className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-xl overflow-hidden border border-brand-primary/30 bg-black shadow-lg shadow-brand-primary/10">
+                <BrandLogo mark />
               </div>
               <div className="flex flex-col">
                 <span className="text-lg font-bold font-sans tracking-tight text-white">

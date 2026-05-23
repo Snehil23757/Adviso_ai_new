@@ -14,6 +14,8 @@ from app.models import (
     ChatRequest,
     ChatResponse,
     CompetitorRequest,
+    DatasetInsightRequest,
+    DatasetInsightResponse,
     DatasetSummaryRequest,
     ForecastRequest,
     ProfitRequest,
@@ -23,6 +25,7 @@ from app.services.analytics import (
     budget_summary,
     competitor_summary,
     data_chat_response,
+    dataset_insights,
     dataset_summary,
     forecast_values,
     profit_summary,
@@ -109,10 +112,22 @@ def summarize_dataset(payload: DatasetSummaryRequest) -> dict:
     return dataset_summary(payload.rows)
 
 
+@app.post("/api/dataset/insights", response_model=DatasetInsightResponse)
+def insight_dataset(payload: DatasetInsightRequest) -> DatasetInsightResponse:
+    result = dataset_insights(
+        mode=payload.mode,
+        rows=payload.rows,
+        columns=payload.columns,
+        question=payload.question,
+        context=payload.context,
+    )
+    return DatasetInsightResponse(success=True, **result)
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
-    answer = data_chat_response(payload.question, payload.rows, payload.columns)
-    return ChatResponse(success=True, answer=answer, source="local")
+    result = dataset_insights("chat", payload.rows, payload.columns, question=payload.question)
+    return ChatResponse(success=True, answer=result["answer"], source=result["source"])
 
 
 frontend_dist = Path(__file__).resolve().parents[2] / "dist"

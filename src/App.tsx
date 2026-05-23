@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Header from "./sections/Header.tsx";
 import Hero from "./sections/Hero.tsx";
 import Trust from "./sections/Trust.tsx";
@@ -21,7 +21,15 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string | null>(() => {
     return localStorage.getItem("adviso_authenticated_email");
   });
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    return (localStorage.getItem("adviso_theme") as "dark" | "light") || "dark";
+  });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("adviso_theme", theme);
+  }, [theme]);
 
   const handleAuthSuccess = (email: string) => {
     localStorage.setItem("adviso_authenticated_email", email);
@@ -34,7 +42,14 @@ export default function App() {
   };
 
   if (userEmail) {
-    return <PlatformDashboard userEmail={userEmail} onLogout={handleLogout} />;
+    return (
+      <PlatformDashboard
+        userEmail={userEmail}
+        onLogout={handleLogout}
+        theme={theme}
+        onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+      />
+    );
   }
 
   return (
@@ -52,6 +67,8 @@ export default function App() {
         userEmail={userEmail} 
         onLogout={handleLogout} 
         onTriggerAuth={() => setIsAuthModalOpen(true)} 
+        theme={theme}
+        onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
       />
 
       {/* Main Structural Content Grid */}
@@ -114,7 +131,7 @@ export default function App() {
                 
                 <div className="space-y-3">
                   <span className="text-xs font-mono font-bold tracking-widest text-brand-primary uppercase px-2 py-0.5 bg-brand-primary/10 rounded border border-brand-primary/20">
-                    🔒 SECURE CLIENT GATEWAY LOCK
+                    SECURE CLIENT GATEWAY LOCK
                   </span>
                   <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-tight">
                     Sign In to Unlock Strategic Advisory Simulator

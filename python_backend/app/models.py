@@ -86,6 +86,21 @@ class DatasetSummaryRequest(BaseModel):
     rows: list[dict]
 
 
+class DatasetInsightRequest(BaseModel):
+    rows: list[dict]
+    columns: list[str] = []
+    mode: str = "overview"
+    question: str = ""
+    context: dict = Field(default_factory=dict)
+
+
+class DatasetInsightResponse(BaseModel):
+    success: bool
+    answer: str
+    source: Literal["ai", "local"]
+    profile: dict = Field(default_factory=dict)
+
+
 class ChatRequest(BaseModel):
     question: str
     rows: list[dict]
@@ -95,4 +110,4 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     success: bool
     answer: str
-    source: Literal["local"]
+    source: Literal["ai", "local"]

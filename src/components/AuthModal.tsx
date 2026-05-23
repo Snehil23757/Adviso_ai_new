@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, Lock, Mail, Building, User, ArrowRight, Shield, Sparkles, Cpu } from "lucide-react";
+import BrandLogo from "./BrandLogo.tsx";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -71,8 +72,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
         {/* Brand symbol */}
         <div className="flex items-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center">
-            <Cpu className="w-4.5 h-4.5 text-white" />
+          <div className="w-9 h-9 rounded-xl overflow-hidden border border-brand-primary/30 bg-black shadow-lg shadow-brand-primary/10">
+            <BrandLogo mark />
           </div>
           <span className="text-sm font-mono tracking-widest font-extrabold text-white uppercase">
             ADVISO SECURE GATEWAY

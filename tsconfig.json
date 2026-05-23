@@ -16,6 +16,9 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
+      "lucide-react": [
+        "./src/components/professional-icons.tsx"
+      ],
       "@/*": [
         "./*"
       ]

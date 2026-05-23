@@ -70,3 +70,141 @@
 .scroll-thin::-webkit-scrollbar-thumb:hover {
   background: rgba(74, 99, 255, 0.4);
 }
+
+/* Adviso platform workspace */
+.adviso-platform {
+  --ap-bg: #f5f7fb;
+  --ap-surface: #ffffff;
+  --ap-surface-2: #eef2f7;
+  --ap-surface-3: #e5eaf2;
+  --ap-text: #111827;
+  --ap-muted: #64748b;
+  --ap-border: #d9e2ec;
+  --ap-accent: #2f55d4;
+  --ap-accent-soft: rgba(47, 85, 212, 0.1);
+  --ap-good: #047857;
+  --ap-warn: #b45309;
+  --ap-chart-grid: rgba(15, 23, 42, 0.08);
+  background: var(--ap-bg);
+  color: var(--ap-text);
+}
+
+.adviso-platform.dark {
+  --ap-bg: #080b13;
+  --ap-surface: #10151f;
+  --ap-surface-2: #151b27;
+  --ap-surface-3: #1b2330;
+  --ap-text: #f8fafc;
+  --ap-muted: #98a2b3;
+  --ap-border: rgba(148, 163, 184, 0.18);
+  --ap-accent: #5b6fff;
+  --ap-accent-soft: rgba(91, 111, 255, 0.14);
+  --ap-good: #10b981;
+  --ap-warn: #f59e0b;
+  --ap-chart-grid: rgba(226, 232, 240, 0.08);
+}
+
+.ap-header,
+.ap-sidebar,
+.ap-card,
+.ap-panel,
+.ap-modal,
+.ap-input,
+.ap-table-wrap {
+  background: var(--ap-surface);
+  border-color: var(--ap-border);
+}
+
+.ap-muted {
+  color: var(--ap-muted);
+}
+
+.ap-accent {
+  color: var(--ap-accent);
+}
+
+.ap-btn {
+  border: 1px solid var(--ap-border);
+  background: var(--ap-surface-2);
+  color: var(--ap-text);
+}
+
+.ap-btn-primary {
+  border: 1px solid var(--ap-accent);
+  background: var(--ap-accent);
+  color: #ffffff;
+}
+
+.ap-input {
+  color: var(--ap-text);
+  outline: none;
+}
+
+.ap-input:focus {
+  border-color: var(--ap-accent);
+  box-shadow: 0 0 0 3px var(--ap-accent-soft);
+}
+
+.ap-table {
+  color: var(--ap-text);
+}
+
+.ap-table thead {
+  background: var(--ap-surface-2);
+  color: var(--ap-muted);
+}
+
+.ap-table tbody tr {
+  border-color: var(--ap-border);
+}
+
+.ap-table tbody tr:hover {
+  background: var(--ap-surface-2);
+}
+
+.ap-chart-tooltip {
+  background: var(--ap-surface) !important;
+  border: 1px solid var(--ap-border) !important;
+  color: var(--ap-text) !important;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+html[data-theme='light'] body {
+  background: #f5f7fb;
+  color: #111827;
+}
+
+html[data-theme='light'] .bg-brand-background,
+html[data-theme='light'] .bg-\[\#050816\] {
+  background-color: #f5f7fb !important;
+}
+
+html[data-theme='light'] .bg-brand-surface,
+html[data-theme='light'] .bg-brand-surface\/20,
+html[data-theme='light'] .bg-brand-surface\/30,
+html[data-theme='light'] .bg-brand-surface\/40,
+html[data-theme='light'] .bg-black\/20,
+html[data-theme='light'] .bg-black\/30,
+html[data-theme='light'] .bg-black\/40,
+html[data-theme='light'] .bg-black\/50 {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+}
+
+html[data-theme='light'] .text-white {
+  color: #111827 !important;
+}
+
+html[data-theme='light'] .bg-brand-primary,
+html[data-theme='light'] .ap-btn-primary {
+  color: #ffffff !important;
+}
+
+html[data-theme='light'] .text-brand-text-secondary {
+  color: #64748b !important;
+}
+
+html[data-theme='light'] .border-white\/5,
+html[data-theme='light'] .border-white\/10,
+html[data-theme='light'] .border-white\/20 {
+  border-color: #d9e2ec !important;
+}
