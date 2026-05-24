@@ -20,6 +20,7 @@ import { ChatTab } from "./platform/ChatTab";
 import { ReportTab, ForecastTab, KpiTab, ProfitTab } from "./platform/AnalyticsTabs";
 import { IdeasTab, BudgetTab, SustainabilityTab, CompetitorTab } from "./platform/BusinessTabs";
 import { DatasetValidationModal } from "./platform/DatasetValidationModal";
+import { apiUrl } from "../config";
 
 // ── CSS variables injected into :root ────────────────────────────────────────
 
@@ -334,7 +335,7 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     if (!rows.length) return;
     setLoadingInsight(mode);
     try {
-      const res = await fetch("/api/dataset/insights", {
+      const res = await fetch(apiUrl("/api/dataset/insights"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, question, context, columns: cols, rows: rows.slice(0, 1500) }),
@@ -357,7 +358,7 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     setChatInput("");
     setChatLoading(true);
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, columns, rows: data.slice(0, 1500) }) });
+      const res = await fetch(apiUrl("/api/chat"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, columns, rows: data.slice(0, 1500) }) });
       if (!res.ok) throw new Error("Chat API error");
       const result = await res.json();
       setChatMsgs((p) => [...p, { role: "assistant", content: result.answer, source: result.source }]);

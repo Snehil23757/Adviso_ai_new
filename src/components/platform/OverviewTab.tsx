@@ -123,7 +123,11 @@ export function OverviewTab({
             <span className="text-[10px] ap-muted font-mono">{profiles.length} fields</span>
           </div>
           <div className="space-y-1.5 max-h-[400px] overflow-auto pr-0.5">
-            {profiles.map((p) => <ProfileCard key={p.name} profile={p} />)}
+            {profiles.map((p) => (
+              <React.Fragment key={p.name}>
+                <ProfileCard profile={p} />
+              </React.Fragment>
+            ))}
           </div>
         </div>
 

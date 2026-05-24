@@ -6,7 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+!.env.production
 python_backend/.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.firebase/
+yes/

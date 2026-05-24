@@ -55,6 +55,7 @@ import {
 } from "recharts";
 
 import Logo from "./Logo.tsx";
+import { apiUrl } from "../config";
 
 type ThemeMode = "dark" | "light";
 type TabType =
@@ -833,7 +834,7 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     if (!rows.length) return;
     setLoadingInsight(mode);
     try {
-      const response = await fetch("/api/dataset/insights", {
+      const response = await fetch(apiUrl("/api/dataset/insights"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -972,7 +973,7 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     setChatInput("");
     setIsChatLoading(true);
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(apiUrl("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, columns, rows: data.slice(0, 1500) }),
