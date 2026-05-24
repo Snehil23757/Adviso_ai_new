@@ -17,6 +17,7 @@ import {
   Layers,
 } from "lucide-react";
 import { StrategicReport } from "../types.js";
+import { apiUrl } from "../config";
 
 type BusinessType = "MSME" | "Startup" | "Founder" | "Analyst";
 
@@ -71,7 +72,7 @@ export default function LiveStrategyPortal() {
     }, 700);
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch(apiUrl("/api/analyze"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
