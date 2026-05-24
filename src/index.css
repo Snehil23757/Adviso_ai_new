@@ -5,47 +5,74 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   
-  --color-brand-primary: #4A63FF;
-  --color-brand-background: #050816;
-  --color-brand-surface: #0B1120;
-  --color-brand-surface-secondary: #111827;
-  --color-brand-border: rgba(255, 255, 255, 0.08);
-  --color-brand-text-primary: #FFFFFF;
-  --color-brand-text-secondary: #A0AEC0;
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-background: var(--brand-background);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-surface-secondary: var(--brand-surface-secondary);
+  --color-brand-border: var(--brand-border);
+  --color-brand-text-primary: var(--brand-text-primary);
+  --color-brand-text-secondary: var(--brand-text-secondary);
+  --color-brand-inverse: var(--brand-inverse);
+}
+
+:root {
+  /* Light Mode - Premium Enterprise SaaS / Apple Intelligence style */
+  --brand-primary: #3B82F6;
+  --brand-background: #F8FAFC;
+  --brand-surface: #FFFFFF;
+  --brand-surface-secondary: #F1F5F9;
+  --brand-border: rgba(15, 23, 42, 0.08);
+  --brand-text-primary: #0F172A;
+  --brand-text-secondary: #475569;
+  --brand-inverse: #ffffff;
+}
+
+html.dark {
+  /* Dark Mode - Muted, Elegant, Deep Navy/Indigo (No Hacker Neon) */
+  --brand-primary: #5B7FFF;
+  --brand-background: #0B1020;
+  --brand-surface: #111827;
+  --brand-surface-secondary: #1E293B;
+  --brand-border: rgba(255, 255, 255, 0.08);
+  --brand-text-primary: #F8FAFC;
+  --brand-text-secondary: #94A3B8;
+  --brand-inverse: #000000;
 }
 
 /* Custom Base Utilities */
 @layer base {
   body {
-    background-color: #050816;
-    color: var(--color-brand-text-primary);
+    background-color: var(--brand-background);
+    color: var(--brand-text-primary);
     font-family: var(--font-sans);
     overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 
 /* Custom visual utilities for enterprise polish */
 .glass-panel {
-  background: rgba(11, 17, 32, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--brand-surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--brand-border);
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 
 .glass {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(125, 125, 125, 0.05);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--brand-border);
 }
 
 .dot-grid {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-image: radial-gradient(var(--brand-border) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
 .subtle-grid {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-image: radial-gradient(var(--brand-border) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -69,6 +96,27 @@
 
 .scroll-thin::-webkit-scrollbar-thumb:hover {
   background: rgba(74, 99, 255, 0.4);
+}
+
+/* Lenis Smooth Scroll Recommended Resets */
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  scroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+.lenis.lenis-scrolling iframe {
+  pointer-events: none;
 }
 
 /* Adviso platform workspace */

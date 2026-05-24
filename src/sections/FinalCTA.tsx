@@ -12,7 +12,7 @@ export default function FinalCTA() {
   };
 
   return (
-    <section className="relative py-24 overflow-hidden border-t border-white/5">
+    <section className="relative py-24 overflow-hidden border-t border-brand-border">
       {/* Background Visual Grids and Auras */}
       <div className="absolute inset-0 subtle-grid opacity-15 pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] radar-sweep rounded-full opacity-35 blur-[120px] pointer-events-none"></div>
@@ -25,7 +25,7 @@ export default function FinalCTA() {
         </div>
 
         <div className="space-y-4 max-w-2xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white font-sans leading-tight">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-brand-text-primary font-sans leading-tight">
             Build Smarter Business Decisions With Adviso AI
           </h2>
           <p className="text-sm sm:text-base text-brand-text-secondary leading-relaxed font-sans">
@@ -38,14 +38,14 @@ export default function FinalCTA() {
           <button
             type="button"
             onClick={scrollToPortal}
-            className="bg-brand-primary hover:bg-brand-primary/95 text-sm font-bold text-white px-8 py-4 rounded-xl shadow-lg shadow-brand-primary/20 transition hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
+            className="bg-brand-primary hover:bg-brand-primary/95 text-sm font-bold text-brand-inverse px-8 py-4 rounded-xl shadow-lg shadow-brand-primary/20 transition hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
           >
             <span>Ask Strategic Advisor Live</span>
             <ArrowRight className="w-4 h-4" />
           </button>
           <a
             href="mailto:partner@advisoadvisor.co"
-            className="bg-white/5 hover:bg-white/10 text-sm font-bold text-white px-8 py-4 rounded-xl border border-white/10 transition hover:-translate-y-0.5 flex items-center justify-center gap-2 w-full sm:w-auto text-center"
+            className="bg-brand-text-primary hover:bg-brand-text-primary/90 text-sm font-bold text-brand-inverse px-8 py-4 rounded-xl border border-brand-border transition hover:-translate-y-0.5 flex items-center justify-center gap-2 w-full sm:w-auto text-center"
           >
             <Mail className="w-4 h-4" />
             <span>Contact Core Sales Team</span>

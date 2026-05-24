@@ -58,7 +58,7 @@ export default function InteractiveChart({
   }, [priceMultiplier, marketingInvestment, operatingEfficiency]);
 
   return (
-    <div className="w-full h-72 rounded-lg bg-black/40 p-1 border border-white/5">
+    <div className="w-full h-72 rounded-lg bg-brand-surface-secondary p-1 border border-brand-border">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={data}

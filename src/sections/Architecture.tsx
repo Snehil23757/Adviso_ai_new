@@ -1,58 +1,59 @@
 import React, { useState } from "react";
-import { Server, Database, ShieldAlert, Cpu, Layers, HardDrive, Network } from "lucide-react";
+import { Server, Database, ShieldAlert, Cpu, Network, FileSpreadsheet } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
-type ArchNodeKey = "AI Engine" | "App Service" | "Registry Cache" | "Gateway Security";
+type ArchNodeKey = "Intelligence Core" | "Format Engine" | "Data Vault" | "Enterprise Gateway";
 
 export default function Architecture() {
-  const [activeNode, setActiveNode] = useState<ArchNodeKey>("AI Engine");
+  const [activeNode, setActiveNode] = useState<ArchNodeKey>("Intelligence Core");
 
   const archNodes = {
-    "AI Engine": {
+    "Intelligence Core": {
       icon: Cpu,
-      title: "FastAPI Analytical engine",
-      tech: "Python, FastAPI, Gemini LLM SDK, LangChain ready",
-      desc: "An independent decision-intelligence layer processing high-dimensional enterprise operational metrics, executing context-aware semantic retrieval, and outputting formatted strategy report payloads.",
+      title: "Advanced Data Intelligence",
+      tech: "High-Dimensional Analytical Processing",
+      desc: "An independent decision-intelligence layer processing large-scale enterprise operational metrics, executing context-aware retrieval, and outputting formatted strategy report payloads.",
       capabilities: [
-        "Advanced LLM orchestration",
-        "Deterministic JSON schema validation",
-        "No caching of raw client keys",
-        "Sub-second execution response latency"
+        "Massive dataset analysis",
+        "Deterministic schema validation",
+        "Explainable AI reasoning",
+        "Real-time actionable insights"
       ]
     },
-    "App Service": {
-      icon: Server,
-      title: "Node.js app Routing Network",
-      tech: "TypeScript, Express, ESModule standalone deployment",
-      desc: "Serves as the central transaction broker, managing secure connections between client interfaces, operational databases, background job runners, and internal API channels.",
+    "Format Engine": {
+      icon: FileSpreadsheet,
+      title: "Omni-Format Processing Engine",
+      tech: "CSV, Excel, JSON & API Integration",
+      desc: "Serves as the central transaction broker, managing the rapid ingestion and normalization of multiple file formats effortlessly so you don't worry about data wrangling.",
       capabilities: [
-        "Strict Type-Safe payload handling",
-        "Role-Based resource routing constraints",
-        "Unified analytical database adapters",
-        "Horizontal autoscaling capabilities"
+        "Rapid multi-format ingestion",
+        "Automated data cleaning & structuring",
+        "Continuous API data syncing",
+        "Role-Based resource constraints"
       ]
     },
-    "Registry Cache": {
+    "Data Vault": {
       icon: Database,
-      title: "Relational Ledger & Redis Cache",
-      tech: "PostgreSQL database core, Redis key-value memory layer",
-      desc: "Provides long-term query storage for corporate records of recommendations with millisecond-speed caching for active simulation parameters.",
+      title: "Scalable Ledger & Data Vault",
+      tech: "Encrypted Long-Term Storage",
+      desc: "Provides long-term, scalable storage for corporate records of recommendations with lightning-speed retrieval for active operational parameters.",
       capabilities: [
-        "Encrypted database storage matrices",
-        "Fast operational index retrieval states",
+        "Encrypted analytical storage",
+        "Lightning-fast metric retrieval",
         "Deterministic transaction logs",
         "Automated backup pipelines"
       ]
     },
-    "Gateway Security": {
+    "Enterprise Gateway": {
       icon: ShieldAlert,
       title: "Secure Enterprise Gateway",
-      tech: "JWT Auth, SSL/TLS, CORS isolation, API Throttling",
-      desc: "Strictly guards database integrations from unauthorized ingress, sanitizing parameters and encrypting client tokens to prevent analytical breaches.",
+      tech: "Zero-Trust Security & Compliance",
+      desc: "Strictly guards your analytics from unauthorized ingress, sanitizing parameters and encrypting client tokens to prevent security breaches.",
       capabilities: [
-        "Token-Based credential isolation",
-        "Standard security sanitization headers",
+        "Zero-Trust token credential isolation",
+        "Standard security sanitization",
         "Automated malicious ingress blockages",
-        "Comprehensive operational audit trials"
+        "Comprehensive operational audit trails"
       ]
     }
   };
@@ -60,97 +61,113 @@ export default function Architecture() {
   const currentNode = archNodes[activeNode];
 
   return (
-    <section id="architecture" className="relative py-24 bg-black/10 overflow-hidden">
+    <section id="architecture" className="relative py-32 bg-brand-surface-secondary overflow-hidden">
       <div className="absolute inset-0 subtle-grid opacity-10 pointer-events-none"></div>
 
-      <div className="max-w-7xl mx-auto px-6 relative z-10 w-full space-y-12">
+      <div className="w-full px-6 md:px-12 xl:px-24 relative z-10 space-y-16">
         
         {/* Title */}
-        <div className="text-center max-w-2xl mx-auto space-y-3">
-          <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#4A63FF]">
-            SYSTEM INTEGRATIONS
+        <div className="text-center max-w-3xl mx-auto space-y-4">
+          <span className="text-xs font-mono font-bold uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-blue-500">
+            ENTERPRISE INFRASTRUCTURE
           </span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-            Enterprise Grade Full-Stack Security Architecture
+          <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-brand-text-primary leading-tight">
+            Built For Enterprise Scale
           </h2>
-          <p className="text-sm text-brand-text-secondary">
-            Adviso AI utilizes a decoupled, resilient architecture engineered to maintain high availability, absolute data containment, and zero telemetry overhead.
+          <p className="text-base sm:text-lg text-brand-text-secondary leading-relaxed font-sans">
+            Adviso AI utilizes a decoupled, resilient architecture engineered to maintain high availability, absolute data containment, and rapid processing of massive datasets.
           </p>
         </div>
 
         {/* Interactive Diagram UI */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-brand-surface/30 p-6 lg:p-10 rounded-2xl border border-white/5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch bg-brand-surface/30 p-6 lg:p-10 rounded-3xl border border-brand-border max-w-[1800px] mx-auto">
           
           {/* Diagrams Core Blocks */}
-          <div className="lg:col-span-6 space-y-4">
+          <div className="lg:col-span-5 xl:col-span-4 space-y-6">
             <span className="block text-[10px] font-mono text-brand-text-secondary uppercase tracking-widest text-center">
               INTERACTIVE PIPELINE BLOCKS (Click to inspect)
             </span>
 
-            <div className="flex flex-col gap-3 relative">
+            <div className="flex flex-col gap-4 relative">
               {(Object.keys(archNodes) as ArchNodeKey[]).map((key) => {
                 const node = archNodes[key];
                 const isActive = activeNode === key;
                 return (
-                  <div
+                  <motion.div
                     key={key}
                     onClick={() => setActiveNode(key)}
-                    className={`flex items-center justify-between p-4 rounded-xl border transition cursor-pointer select-none ${
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className={`flex items-center justify-between p-5 rounded-2xl border transition-all cursor-pointer select-none ${
                       isActive 
-                        ? "bg-brand-primary/10 border-brand-primary text-white shadow-lg shadow-brand-primary/5" 
-                        : "bg-black/30 border-white/5 text-brand-text-secondary hover:border-white/10 hover:text-white"
+                        ? "bg-gradient-to-r from-brand-primary/10 to-brand-primary/5 border-brand-primary/30 text-brand-text-primary shadow-lg shadow-brand-primary/5" 
+                        : "bg-brand-surface-secondary border-brand-border text-brand-text-secondary hover:border-brand-border hover:text-brand-text-primary"
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isActive ? "bg-brand-primary text-white" : "bg-white/5 text-brand-text-secondary"}`}>
-                        <node.icon className="w-4 h-4" />
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isActive ? "bg-brand-primary text-white shadow-md shadow-brand-primary/20" : "bg-brand-text-primary/10 text-brand-text-secondary"}`}>
+                        <node.icon className="w-5 h-5" />
                       </div>
                       <div className="text-left">
-                        <span className="block text-xs font-bold leading-none">{node.title}</span>
-                        <span className="text-[9px] font-mono opacity-60 uppercase tracking-wider">{key}</span>
+                        <span className="block text-sm font-bold leading-none">{node.title}</span>
                       </div>
                     </div>
-                    <Network className={`w-4 h-4 transition ${isActive ? "text-brand-primary opacity-100 rotate-45" : "text-brand-text-secondary/40"}`} />
-                  </div>
+                    <Network className={`w-5 h-5 transition-transform duration-300 ${isActive ? "text-brand-primary opacity-100 rotate-45 scale-110" : "text-brand-text-secondary/30"}`} />
+                  </motion.div>
                 );
               })}
             </div>
           </div>
 
-          {/* Detailed Node Information */}
-          <div className="lg:col-span-6 bg-black/40 rounded-xl border border-white/5 p-6 text-left space-y-4 h-full flex flex-col justify-between">
-            <div className="space-y-4">
-              <div>
-                <span className="text-[10px] font-mono text-[#0EA5E9] font-bold bg-[#0EA5E9]/10 px-2 py-0.5 rounded border border-[#0EA5E9]/20 uppercase">
-                  {currentNode.tech}
-                </span>
-                <h3 className="text-xl font-bold text-white mt-3 font-sans">
-                  {currentNode.title}
-                </h3>
-              </div>
-              
-              <p className="text-xs text-brand-text-secondary leading-relaxed leading-normal">
-                {currentNode.desc}
-              </p>
+          {/* Detailed Node Information Information */}
+          <div className="lg:col-span-7 xl:col-span-8 bg-brand-surface-secondary rounded-3xl border border-brand-border p-8 sm:p-12 text-left flex flex-col justify-between relative overflow-hidden min-h-[400px]">
+            {/* Ambient indicator glow */}
+            <div className="absolute -top-32 -right-32 w-96 h-96 bg-brand-primary/10 rounded-full blur-[100px] pointer-events-none"></div>
 
-              <div className="border-t border-white/5 pt-4 space-y-2">
-                <span className="block text-[9px] font-mono text-brand-text-secondary uppercase tracking-widest">
-                  CORE OPERATION CAPABILITIES
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {currentNode.capabilities.map((cap, cIdx) => (
-                    <div key={cIdx} className="flex items-center gap-2 text-[11px] text-white/90">
-                      <div className="w-1 h-1 rounded-full bg-brand-primary shrink-0"></div>
-                      <span>{cap}</span>
-                    </div>
-                  ))}
+            <AnimatePresence mode="wait">
+              <motion.div 
+                key={activeNode}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-6 relative z-10"
+              >
+                <div>
+                  <span className="text-xs font-mono text-brand-primary font-bold bg-brand-primary/10 px-3 py-1.5 rounded-full border border-brand-primary/20 uppercase">
+                    {currentNode.tech}
+                  </span>
+                  <h3 className="text-2xl sm:text-3xl font-extrabold text-brand-text-primary mt-4 font-sans tracking-tight">
+                    {currentNode.title}
+                  </h3>
                 </div>
-              </div>
-            </div>
+                
+                <p className="text-base sm:text-lg text-brand-text-secondary leading-relaxed font-sans max-w-2xl">
+                  {currentNode.desc}
+                </p>
 
-            <div className="pt-4 border-t border-white/5 text-[10px] font-mono text-brand-text-secondary flex justify-between">
-              <span>STATUS: LIVE_COMMUNICATION_ONLINE</span>
-              <span>INDEX: 0XAA{activeNode.length}</span>
+                <div className="border-t border-brand-border pt-6 space-y-4">
+                  <span className="block text-[10px] font-mono text-brand-text-secondary uppercase tracking-widest leading-none">
+                    CORE OPERATION CAPABILITIES
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {currentNode.capabilities.map((cap, cIdx) => (
+                      <div key={cIdx} className="flex items-center gap-3 text-sm text-brand-text-primary font-medium font-sans bg-brand-surface p-3 rounded-xl border border-brand-border shadow-sm">
+                        <div className="w-2 h-2 rounded-full bg-brand-primary shrink-0 opacity-80"></div>
+                        <span>{cap}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="mt-8 pt-6 border-t border-brand-border text-xs font-mono text-brand-text-secondary flex flex-wrap gap-4 justify-between tracking-wider relative z-10">
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#00E676] animate-pulse"></span>
+                STATUS: SECURE_LINK_ONLINE
+              </span>
+              <span>NODE_ID: 0xAA{activeNode.length}F</span>
             </div>
           </div>
 

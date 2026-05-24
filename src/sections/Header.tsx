@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Menu, X, ArrowRight, ShieldCheck, Cpu, Sun, Moon } from "lucide-react";
-import BrandLogo from "../components/BrandLogo.tsx";
+import { Sparkles, Menu, X, ArrowRight, ShieldCheck, Cpu, Moon, Sun } from "lucide-react";
+import Logo from "../components/Logo.tsx";
 
 interface HeaderProps {
   userEmail: string | null;
   onLogout: () => void;
   onTriggerAuth: () => void;
-  theme: "dark" | "light";
-  onToggleTheme: () => void;
+  theme?: "light" | "dark";
+  toggleTheme?: () => void;
 }
 
-export default function Header({ userEmail, onLogout, onTriggerAuth, theme, onToggleTheme }: HeaderProps) {
+export default function Header({ userEmail, onLogout, onTriggerAuth, theme, toggleTheme }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -38,19 +38,17 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, onTo
   return (
     <header className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
       isScrolled 
-        ? "bg-brand-background/90 border-b border-white/5 backdrop-blur-md" 
+        ? "bg-brand-background/80 border-b border-brand-border backdrop-blur-xl shadow-sm" 
         : "bg-transparent border-b border-transparent"
     }`}>
-      <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <div className="w-full px-6 md:px-12 xl:px-24 h-24 flex items-center justify-between max-w-[2000px] mx-auto">
         
-        {/* Left: Adviso AI Logo */}
+        {/* Left: Adviso AI Logo with SVG Graphic */}
         <div 
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="flex items-center cursor-pointer group"
+          className="cursor-pointer group flex items-center h-12"
         >
-          <div className="h-12 w-[210px] sm:w-[270px] overflow-hidden rounded-xl border border-white/10 bg-black/60 shadow-lg shadow-brand-primary/10 transition duration-300 group-hover:border-brand-primary/40">
-            <BrandLogo />
-          </div>
+          <Logo size="md" />
         </div>
 
         {/* Center: Navigation Options */}
@@ -59,15 +57,13 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, onTo
             { label: "Platform", id: "platform-overview" },
             { label: "Features", id: "core-features" },
             { label: "Use Cases", id: "use-cases" },
-            { label: "Workflow", id: "workflow" },
             { label: "Architecture", id: "architecture" },
-            { label: "Security", id: "security" },
             { label: "Pricing", id: "pricing" },
           ].map((item, idx) => (
             <button
               key={idx}
               onClick={() => scrollToSection(item.id)}
-              className="text-sm font-medium text-brand-text-secondary hover:text-white transition cursor-pointer"
+              className="text-sm font-medium text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer"
             >
               {item.label}
             </button>
@@ -75,54 +71,64 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, onTo
         </nav>
 
         {/* Right Action buttons */}
-        <div className="hidden lg:flex items-center gap-4">
-          <button
-            type="button"
-            onClick={onToggleTheme}
-            className="text-xs font-semibold text-brand-text-secondary hover:text-white transition bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg border border-white/10 cursor-pointer flex items-center gap-2"
-          >
-            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            <span>{theme === "dark" ? "Light" : "Dark"}</span>
-          </button>
+        <div className="hidden lg:flex items-center gap-5">
+          {toggleTheme && (
+            <button 
+              onClick={toggleTheme}
+              className="p-2 rounded-full hover:bg-brand-surface border border-transparent hover:border-brand-border transition-colors text-brand-text-secondary hover:text-brand-text-primary"
+              aria-label="Toggle Theme"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+          )}
+
           {userEmail ? (
             <div className="flex items-center gap-3">
-              <div className="bg-brand-primary/15 border border-brand-primary/30 rounded-xl px-3 py-1.5 flex items-center gap-2">
+              <div className="bg-brand-primary/10 border border-brand-primary/20 rounded-xl px-3 py-1.5 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span className="text-xs font-mono text-white/95 max-w-[140px] truncate">
+                <span className="text-xs font-mono font-medium text-brand-text-primary max-w-[140px] truncate">
                   {userEmail}
                 </span>
               </div>
               <button 
                 onClick={onLogout}
-                className="text-xs font-mono font-bold text-[#A0AEC0] hover:text-white transition bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg border border-white/5 cursor-pointer"
+                className="text-xs font-bold text-brand-text-secondary hover:text-brand-text-primary transition bg-transparent hover:bg-brand-surface px-3 py-1.5 rounded-lg border border-brand-border cursor-pointer"
               >
-                LOGOUT
+                Log Out
               </button>
             </div>
           ) : (
-            <>
+            <div className="flex items-center gap-3">
               <button 
                 onClick={onTriggerAuth}
-                className="text-sm font-semibold text-brand-text-secondary hover:text-white transition cursor-pointer"
+                className="text-sm font-semibold text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer px-2"
               >
-                Access Console / Sign In
+                Sign In
               </button>
               <button 
                 onClick={onTriggerAuth}
-                className="bg-brand-primary hover:bg-brand-primary/95 text-xs font-bold text-white px-5 py-2.5 rounded-lg border border-brand-primary/20 transition-all hover:shadow-md hover:shadow-brand-primary/20 flex items-center gap-1.5 cursor-pointer"
+                className="bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
-                <span>Initialize Free</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>Get Started</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
-            </>
+            </div>
           )}
         </div>
 
         {/* Mobile menu toggle */}
-        <div className="lg:hidden">
+        <div className="lg:hidden flex items-center gap-2">
+          {toggleTheme && (
+            <button 
+              onClick={toggleTheme}
+              className="p-2 text-brand-text-secondary hover:text-brand-text-primary"
+            >
+              {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+          )}
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="text-brand-text-secondary hover:text-white transition p-2"
+            className="text-brand-text-secondary hover:text-brand-text-primary transition p-2"
           >
             {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -131,49 +137,39 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, onTo
 
       {/* Mobile Drawer Menu */}
       {isMenuOpen && (
-        <div className="lg:hidden bg-brand-background border-b border-white/5 px-6 py-6 space-y-4 animate-fade-in">
+        <div className="lg:hidden bg-brand-background border-b border-brand-border px-6 py-6 space-y-4 animate-fade-in shadow-xl">
           <div className="flex flex-col gap-4">
             {[
               { label: "Platform Overview", id: "platform-overview" },
               { label: "Core Features", id: "core-features" },
               { label: "Use Cases", id: "use-cases" },
-              { label: "Workflow Analysis", id: "workflow" },
               { label: "Architecture", id: "architecture" },
-              { label: "Security", id: "security" },
-              { label: "Pricing Comparison", id: "pricing" },
+              { label: "Pricing", id: "pricing" },
             ].map((item, idx) => (
               <button
                 key={idx}
                 onClick={() => scrollToSection(item.id)}
-                className="text-left py-2 text-base font-medium text-brand-text-secondary hover:text-white transition"
+                className="text-left py-2 text-base font-medium text-brand-text-secondary hover:text-brand-text-primary transition"
               >
                 {item.label}
               </button>
             ))}
           </div>
-          <div className="pt-4 border-t border-white/5 flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              className="w-full text-center py-2.5 text-xs font-mono font-bold text-brand-text-secondary bg-white/5 border border-white/10 rounded-lg cursor-pointer flex items-center justify-center gap-2"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              <span>{theme === "dark" ? "LIGHT THEME" : "DARK THEME"}</span>
-            </button>
+          <div className="pt-6 border-t border-brand-border flex flex-col gap-3">
             {userEmail ? (
-              <div className="space-y-2">
-                <div className="bg-brand-primary/10 border border-brand-primary/30 rounded-xl px-3 py-2 flex items-center gap-2">
+              <div className="space-y-3">
+                <div className="bg-brand-primary/10 border border-brand-primary/20 rounded-xl px-4 py-3 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-                  <span className="text-xs font-mono text-white max-w-[170px] truncate">{userEmail}</span>
+                  <span className="text-sm font-medium text-brand-text-primary max-w-[200px] truncate">{userEmail}</span>
                 </div>
                 <button 
                   onClick={() => {
                     onLogout();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full text-center py-2.5 text-xs font-mono font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg cursor-pointer"
+                  className="w-full text-center py-3 text-sm font-bold text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-xl cursor-pointer"
                 >
-                  LOGOUT SECURITY PROFILE
+                  Sign Out
                 </button>
               </div>
             ) : (
@@ -183,18 +179,18 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, onTo
                     onTriggerAuth();
                     setIsMenuOpen(false);
                   }}
-                  className="text-center py-2.5 text-sm font-semibold text-brand-text-secondary hover:text-white transition cursor-pointer"
+                  className="text-center py-3 text-sm font-semibold text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer border border-brand-border rounded-xl"
                 >
-                  Access Console
+                  Sign In
                 </button>
                 <button 
                   onClick={() => {
                     onTriggerAuth();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full bg-brand-primary hover:bg-brand-primary/90 text-sm font-bold text-white py-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <span>Register Strategy</span>
+                  <span>Get Started</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </>

@@ -109,13 +109,13 @@ export default function LiveStrategyPortal() {
   };
 
   return (
-    <div id="strategy-portal" className="w-full rounded-2xl border border-white/5 bg-brand-surface/40 backdrop-blur-md p-6 lg:p-8">
+    <div id="strategy-portal" className="w-full rounded-2xl border border-brand-border bg-brand-surface/40 backdrop-blur-md p-6 lg:p-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/20 text-brand-primary text-xs font-medium font-mono uppercase tracking-wider mb-2">
             <Sparkles className="w-3.5 h-3.5" /> Live Decision Engine
           </div>
-          <h3 className="text-2xl font-bold tracking-tight text-white">
+          <h3 className="text-2xl font-bold tracking-tight text-brand-text-primary">
             Operational Strategy & Simulation Center
           </h3>
           <p className="text-sm text-brand-text-secondary mt-1">
@@ -138,7 +138,7 @@ export default function LiveStrategyPortal() {
             <input
               type="text"
               placeholder="e.g. Apex HealthTech"
-              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-medium text-white placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-black/50"
+              className="w-full rounded-lg border border-brand-border bg-brand-surface-secondary px-3 py-2.5 text-sm font-medium text-brand-text-primary placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-brand-surface-secondary"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
             />
@@ -150,7 +150,7 @@ export default function LiveStrategyPortal() {
                 Audience Profile
               </label>
               <select
-                className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-medium text-white outline-none transition focus:border-brand-primary focus:bg-black/50"
+                className="w-full rounded-lg border border-brand-border bg-brand-surface-secondary px-3 py-2.5 text-sm font-medium text-brand-text-primary outline-none transition focus:border-brand-primary focus:bg-brand-surface-secondary"
                 value={businessType}
                 onChange={(e) => setBusinessType(e.target.value as BusinessType)}
               >
@@ -167,7 +167,7 @@ export default function LiveStrategyPortal() {
               </label>
               <input
                 type="text"
-                className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-medium text-white placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-black/50"
+                className="w-full rounded-lg border border-brand-border bg-brand-surface-secondary px-3 py-2.5 text-sm font-medium text-brand-text-primary placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-brand-surface-secondary"
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
               />
@@ -180,7 +180,7 @@ export default function LiveStrategyPortal() {
             </label>
             <input
               type="text"
-              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-medium text-white placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-black/50"
+              className="w-full rounded-lg border border-brand-border bg-brand-surface-secondary px-3 py-2.5 text-sm font-medium text-brand-text-primary placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-brand-surface-secondary"
               value={revenueDesc}
               onChange={(e) => setRevenueDesc(e.target.value)}
             />
@@ -192,7 +192,7 @@ export default function LiveStrategyPortal() {
             </label>
             <input
               type="text"
-              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-medium text-white placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-black/50"
+              className="w-full rounded-lg border border-brand-border bg-brand-surface-secondary px-3 py-2.5 text-sm font-medium text-brand-text-primary placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-brand-surface-secondary"
               value={burnRateDesc}
               onChange={(e) => setBurnRateDesc(e.target.value)}
             />
@@ -204,7 +204,7 @@ export default function LiveStrategyPortal() {
             </label>
             <textarea
               rows={2}
-              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-medium text-white placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-black/50 resize-none"
+              className="w-full rounded-lg border border-brand-border bg-brand-surface-secondary px-3 py-2.5 text-sm font-medium text-brand-text-primary placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-brand-surface-secondary resize-none"
               value={strategicGoals}
               onChange={(e) => setStrategicGoals(e.target.value)}
             />
@@ -216,7 +216,7 @@ export default function LiveStrategyPortal() {
             </label>
             <input
               type="text"
-              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm font-medium text-white placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-black/50"
+              className="w-full rounded-lg border border-brand-border bg-brand-surface-secondary px-3 py-2.5 text-sm font-medium text-brand-text-primary placeholder-brand-text-secondary/50 outline-none transition focus:border-brand-primary focus:bg-brand-surface-secondary"
               value={obstaclesDesc}
               onChange={(e) => setObstaclesDesc(e.target.value)}
             />
@@ -225,11 +225,11 @@ export default function LiveStrategyPortal() {
           <button
             type="submit"
             disabled={isLoading}
-            className="relative w-full overflow-hidden rounded-xl bg-brand-primary px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-primary/90 hover:shadow-lg hover:shadow-brand-primary/25 disabled:opacity-75 flex items-center justify-center gap-2"
+            className="relative w-full overflow-hidden rounded-xl bg-brand-primary px-6 py-3 text-sm font-semibold text-brand-text-primary transition hover:bg-brand-primary/90 hover:shadow-lg hover:shadow-brand-primary/25 disabled:opacity-75 flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                <RefreshCw className="w-4 h-4 animate-spin text-brand-text-primary" />
                 <span>Assembling Report...</span>
               </>
             ) : (
@@ -242,30 +242,40 @@ export default function LiveStrategyPortal() {
         </form>
 
         {/* Right Side: Execution Dashboard / Loading Screen */}
-        <div className="lg:col-span-7 h-full min-h-[500px] flex flex-col rounded-xl border border-white/5 bg-black/20 p-6 relative justify-center overflow-hidden">
+        <div className="lg:col-span-7 h-full min-h-[500px] flex flex-col rounded-xl border border-brand-border bg-brand-surface-secondary p-6 relative justify-center overflow-hidden">
           
           {/* Subtle decoration grids */}
           <div className="absolute inset-0 subtle-grid opacity-20 pointer-events-none"></div>
 
           {/* Loader Overlay */}
           {isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-brand-surface/95 z-20 p-6 text-center animate-fade-in">
-              <div className="relative mb-6">
-                <div className="w-16 h-16 rounded-full border-4 border-brand-primary/10 border-t-brand-primary animate-spin"></div>
-                <Sparkles className="w-6 h-6 text-brand-primary absolute inset-0 m-auto animate-pulse" />
+            <div className="absolute inset-0 flex flex-col bg-brand-surface/95 z-20 p-8 animate-fade-in overflow-hidden">
+              <div className="flex items-center justify-between mb-8 opacity-40">
+                <div className="w-1/3 h-8 bg-brand-text-primary/10 rounded-lg animate-pulse"></div>
+                <div className="w-24 h-8 bg-brand-text-primary/10 rounded-lg animate-pulse"></div>
               </div>
-              <h4 className="text-lg font-bold text-white tracking-tight mb-2">
-                Simulating Strategic Matrices
-              </h4>
-              <div className="flex items-center gap-2 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-ping"></span>
-                <span className="text-xs font-mono text-brand-text-secondary uppercase tracking-widest">
-                  {loadingStep}
-                </span>
+              <div className="space-y-6 mb-8 opacity-40">
+                <div className="w-full h-32 bg-brand-text-primary/10 rounded-xl animate-pulse"></div>
+                <div className="flex gap-4">
+                  <div className="w-1/2 h-24 bg-brand-text-primary/10 rounded-xl animate-pulse"></div>
+                  <div className="w-1/2 h-24 bg-brand-text-primary/10 rounded-xl animate-pulse"></div>
+                </div>
               </div>
-              <p className="text-xs text-brand-text-secondary max-w-sm mt-6 leading-relaxed">
-                Adviso client utilizes multi-agent processing systems to map scenario indicators and optimize structural viability scoring.
-              </p>
+              
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-brand-surface/60 backdrop-blur-sm">
+                <h4 className="text-lg font-bold text-brand-text-primary tracking-tight mb-4">
+                  Simulating Strategic Matrices
+                </h4>
+                <div className="flex items-center gap-3 bg-brand-surface-secondary/90 px-5 py-2.5 rounded-full border border-brand-border shadow-xl">
+                  <span className="w-2 h-2 rounded-full bg-brand-primary animate-ping"></span>
+                  <span className="text-xs font-mono text-brand-text-primary uppercase tracking-widest font-bold">
+                    {loadingStep}
+                  </span>
+                </div>
+                <p className="text-xs text-brand-text-secondary max-w-sm mt-6 leading-relaxed text-center bg-brand-surface/80 p-2 rounded">
+                  Adviso client utilizes multi-agent processing systems to map scenario indicators and optimize structural viability scoring.
+                </p>
+              </div>
             </div>
           )}
 
@@ -276,7 +286,7 @@ export default function LiveStrategyPortal() {
                 <Database className="w-8 h-8" />
               </div>
               <div>
-                <h4 className="text-lg font-bold text-white tracking-tight mb-2">
+                <h4 className="text-lg font-bold text-brand-text-primary tracking-tight mb-2">
                   Ready for Structural Asset Analysis
                 </h4>
                 <p className="text-sm text-brand-text-secondary leading-relaxed">
@@ -290,7 +300,7 @@ export default function LiveStrategyPortal() {
                   Operational Profiles Available
                 </span>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded border border-white/5 bg-white/5 hover:border-brand-primary/30 transition cursor-pointer"
+                  <div className="p-2.5 rounded border border-brand-border bg-brand-text-primary hover:border-brand-primary/30 transition cursor-pointer"
                     onClick={() => {
                       setBusinessName("EquiFlow Logistics");
                       setIndustry("Logistics & Supply Chain");
@@ -301,10 +311,10 @@ export default function LiveStrategyPortal() {
                       setBusinessType("MSME");
                     }}
                   >
-                    <span className="font-semibold block text-white mb-0.5">MSME Logistics</span>
+                    <span className="font-semibold block text-brand-text-primary mb-0.5">MSME Logistics</span>
                     <span className="text-[10px] text-brand-text-secondary">Seasonal, cost constraints</span>
                   </div>
-                  <div className="p-2.5 rounded border border-white/5 bg-white/5 hover:border-brand-primary/30 transition cursor-pointer"
+                  <div className="p-2.5 rounded border border-brand-border bg-brand-text-primary hover:border-brand-primary/30 transition cursor-pointer"
                     onClick={() => {
                       setBusinessName("Solaria AI");
                       setIndustry("Enterprise software SaaS");
@@ -315,7 +325,7 @@ export default function LiveStrategyPortal() {
                       setBusinessType("Startup");
                     }}
                   >
-                    <span className="font-semibold block text-white mb-0.5">SaaS Startup</span>
+                    <span className="font-semibold block text-brand-text-primary mb-0.5">SaaS Startup</span>
                     <span className="text-[10px] text-brand-text-secondary">High margin, expansion push</span>
                   </div>
                 </div>
@@ -330,7 +340,7 @@ export default function LiveStrategyPortal() {
                 <AlertCircle className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="text-base font-bold text-white">Analysis Interrupted</h4>
+                <h4 className="text-base font-bold text-brand-text-primary">Analysis Interrupted</h4>
                 <p className="text-xs font-mono text-rose-400 mt-1">{errorMsg}</p>
                 <p className="text-xs text-brand-text-secondary mt-3">
                   Please check your parameters and verify configuration parameters before submitting again.
@@ -344,23 +354,23 @@ export default function LiveStrategyPortal() {
             <div className="relative z-10 w-full space-y-6 text-left animate-fade-in overflow-y-auto max-h-[520px] scroll-thin pr-1">
               
               {/* Header Scoring Row */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-brand-border pb-4">
                 <div>
                   <h4 className="text-xs font-mono text-brand-text-secondary uppercase tracking-wider">
                     Executive Strategic Report
                   </h4>
-                  <h5 className="text-lg font-bold text-white mt-0.5">
+                  <h5 className="text-lg font-bold text-brand-text-primary mt-0.5">
                     {businessName || "Unnamed Enterprise"} - Tactical Solutions Map
                   </h5>
                 </div>
-                <div className="flex items-center gap-3 bg-white/5 px-3.5 py-1.5 rounded-lg border border-white/5">
+                <div className="flex items-center gap-3 bg-brand-text-primary px-3.5 py-1.5 rounded-lg border border-brand-border">
                   <div className="flex flex-col text-right">
                     <span className="text-[10px] text-brand-text-secondary font-mono">HEALTH SCORE</span>
-                    <span className="text-sm font-bold text-white leading-none">
+                    <span className="text-sm font-bold text-brand-text-primary leading-none">
                       {report.score} <span className="text-xs text-brand-text-secondary">/ 100</span>
                     </span>
                   </div>
-                  <div className="w-2.5 h-10 bg-white/10 rounded overflow-hidden">
+                  <div className="w-2.5 h-10 bg-brand-text-primary rounded overflow-hidden">
                     <div 
                       className="w-full bg-brand-primary" 
                       style={{ height: `${report.score}%` }}
@@ -370,11 +380,11 @@ export default function LiveStrategyPortal() {
               </div>
 
               {/* Executive Summary */}
-              <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+              <div className="bg-brand-text-primary p-4 rounded-xl border border-brand-border">
                 <h6 className="text-[11px] font-mono text-brand-primary font-semibold uppercase tracking-widest mb-1">
                   TACTICAL DISCOVERY SYNOPSIS
                 </h6>
-                <p className="text-xs text-white leading-relaxed font-sans">
+                <p className="text-xs text-brand-text-primary leading-relaxed font-sans">
                   {report.reasoning}
                 </p>
               </div>
@@ -388,15 +398,15 @@ export default function LiveStrategyPortal() {
                   {report.recommendations.map((rec, rIdx) => {
                     const isHighImpact = rec.impact === "High";
                     return (
-                      <div key={rIdx} className="border border-white/5 bg-black/40 rounded-xl p-4 space-y-3">
+                      <div key={rIdx} className="border border-brand-border bg-brand-surface-secondary rounded-xl p-4 space-y-3">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${
-                              isHighImpact ? "bg-brand-primary/10 text-brand-primary border border-brand-primary/25" : "bg-white/5 text-brand-text-secondary border border-white/5"
+                              isHighImpact ? "bg-brand-primary/10 text-brand-primary border border-brand-primary/25" : "bg-brand-text-primary text-brand-text-secondary border border-brand-border"
                             }`}>
                               {rec.impact} Impact
                             </span>
-                            <h7 className="block text-sm font-bold text-white mt-1.5">
+                            <h7 className="block text-sm font-bold text-brand-text-primary mt-1.5">
                               {rec.title}
                             </h7>
                           </div>
@@ -413,7 +423,7 @@ export default function LiveStrategyPortal() {
                         </p>
 
                         {/* Interactive Steps Checklist */}
-                        <div className="bg-black/30 p-2.5 rounded-lg border border-white/5 space-y-2">
+                        <div className="bg-brand-surface-secondary p-2.5 rounded-lg border border-brand-border space-y-2">
                           <span className="block text-[9px] text-brand-text-secondary font-mono uppercase tracking-widest">
                             EXECUTION ROADMAP (Interactive Checklist)
                           </span>
@@ -425,17 +435,17 @@ export default function LiveStrategyPortal() {
                                 <div 
                                   key={sIdx} 
                                   onClick={() => toggleAction(actionKey)}
-                                  className="flex items-start gap-2.5 cursor-pointer hover:bg-white/5 p-1 rounded transition select-none"
+                                  className="flex items-start gap-2.5 cursor-pointer hover:bg-brand-text-primary p-1 rounded transition select-none"
                                 >
                                   <div className={`mt-0.5 w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${
                                     isChecked 
-                                      ? "bg-brand-primary border-brand-primary text-white" 
-                                      : "border-white/20 bg-transparent text-transparent"
+                                      ? "bg-brand-primary border-brand-primary text-brand-text-primary" 
+                                      : "border-brand-border bg-transparent text-transparent"
                                   }`}>
                                     <CheckCircle2 className="w-2.5 h-2.5 stroke-[3]" />
                                   </div>
                                   <span className={`text-xs transition-colors ${
-                                    isChecked ? "text-brand-text-secondary/60 line-through" : "text-white/90"
+                                    isChecked ? "text-brand-text-secondary/60 line-through" : "text-brand-text-primary/90"
                                   }`}>
                                     {step}
                                   </span>
@@ -460,9 +470,9 @@ export default function LiveStrategyPortal() {
                     const isHighRisk = sc.riskLevel === "High";
                     const isMedRisk = sc.riskLevel === "Medium";
                     return (
-                      <div key={scIdx} className="bg-white/5 p-3.5 rounded-xl border border-white/5 space-y-2">
+                      <div key={scIdx} className="bg-brand-text-primary p-3.5 rounded-xl border border-brand-border space-y-2">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-mono font-medium text-white/90 truncate">
+                          <span className="text-xs font-mono font-medium text-brand-text-primary/90 truncate">
                             {sc.scenario}
                           </span>
                           <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono uppercase ${
@@ -484,7 +494,7 @@ export default function LiveStrategyPortal() {
 
               {/* Strategic KPI Forecast Projection */}
               {report.kpiForecast && report.kpiForecast.length > 0 && (
-                <div className="bg-black/50 p-4 rounded-xl border border-white/5 space-y-2">
+                <div className="bg-brand-surface-secondary p-4 rounded-xl border border-brand-border space-y-2">
                   <div className="flex items-center gap-2 mb-1">
                     <TrendingUp className="w-3.5 h-3.5 text-brand-primary" />
                     <h6 className="text-[10px] font-mono text-brand-text-secondary font-semibold uppercase tracking-wider">
@@ -494,7 +504,7 @@ export default function LiveStrategyPortal() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-[11px] font-mono text-brand-text-secondary">
                       <thead>
-                        <tr className="border-b border-white/5 text-left">
+                        <tr className="border-b border-brand-border text-left">
                           <th className="pb-1.5 font-medium">TIMEFRAME</th>
                           <th className="pb-1.5 font-medium text-right">REVENUE INDEX</th>
                           <th className="pb-1.5 font-medium text-right">EFFICIENCY CAPABILITY</th>
@@ -502,8 +512,8 @@ export default function LiveStrategyPortal() {
                       </thead>
                       <tbody className="divide-y divide-white/5">
                         {report.kpiForecast.map((k, kIdx) => (
-                          <tr key={kIdx} className="hover:bg-white/5">
-                            <td className="py-1.5 text-white font-sans">{k.timeframe}</td>
+                          <tr key={kIdx} className="hover:bg-brand-text-primary">
+                            <td className="py-1.5 text-brand-text-primary font-sans">{k.timeframe}</td>
                             <td className="py-1.5 text-right text-brand-primary font-bold">
                               {k.revenueGrowthRate.toFixed(2)}x
                             </td>
@@ -529,7 +539,7 @@ export default function LiveStrategyPortal() {
                     setReport(null);
                     setCheckedActions({});
                   }}
-                  className="flex items-center gap-2 text-xs font-semibold text-brand-text-secondary hover:text-white transition"
+                  className="flex items-center gap-2 text-xs font-semibold text-brand-text-secondary hover:text-brand-text-primary transition"
                 >
                   <RefreshCw className="w-3 h-3" />
                   <span>Configure Alternate Scenario</span>

@@ -54,7 +54,7 @@ import {
   YAxis,
 } from "recharts";
 
-import BrandLogo from "./BrandLogo.tsx";
+import Logo from "./Logo.tsx";
 
 type ThemeMode = "dark" | "light";
 type TabType =
@@ -1016,12 +1016,9 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     <div className={`adviso-platform ${theme} min-h-screen flex flex-col font-sans`}>
       <header className="ap-header h-16 border-b px-5 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl overflow-hidden border" style={{ borderColor: "var(--ap-border)" }}>
-            <BrandLogo mark />
-          </div>
-          <div>
-            <div className="font-bold text-base leading-tight">Adviso AI Platform</div>
-            <div className="text-[10px] uppercase tracking-[0.18em] ap-muted">Data workspace</div>
+          <div className="flex flex-col">
+            <Logo size="md" className="text-[var(--ap-text)]" />
+            <div className="text-[10px] uppercase tracking-[0.18em] ap-muted pl-[3.25rem] -mt-1">Platform workspace</div>
           </div>
         </div>
         <div className="flex items-center gap-2">

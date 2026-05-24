@@ -1,6 +1,6 @@
 import React from "react";
 import { Cpu, Linkedin, Mail, ShieldCheck } from "lucide-react";
-import BrandLogo from "../components/BrandLogo.tsx";
+import Logo from "../components/Logo.tsx";
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -54,28 +54,18 @@ export default function Footer() {
   };
 
   return (
-    <footer className="relative bg-brand-background border-t border-white/5 py-16 overflow-hidden">
+    <footer className="relative bg-brand-background border-t border-brand-border py-16 overflow-hidden">
       <div className="absolute inset-0 subtle-grid opacity-10 pointer-events-none"></div>
 
-      <div className="max-w-7xl mx-auto px-6 relative z-10 w-full space-y-12">
+      <div className="w-full px-6 md:px-12 xl:px-24 mx-auto relative z-10 space-y-16 max-w-[2000px]">
         
         {/* Top Sitemap Rows Grid */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
           
           {/* Identity col */}
           <div className="col-span-2 space-y-4 text-left">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden border border-brand-primary/30 bg-black shadow-lg shadow-brand-primary/10">
-                <BrandLogo mark />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-lg font-bold font-sans tracking-tight text-white">
-                  ADVISO <span className="text-brand-primary">AI</span>
-                </span>
-                <span className="text-[9px] font-mono tracking-widest text-brand-text-secondary uppercase leading-none">
-                  DECISION INTELLIGENCE
-                </span>
-              </div>
+            <div className="h-12 flex items-center">
+              <Logo size="md" />
             </div>
             
             <p className="text-xs text-brand-text-secondary leading-relaxed max-w-sm">
@@ -83,10 +73,10 @@ export default function Footer() {
             </p>
 
             <div className="flex items-center gap-3 text-brand-text-secondary">
-              <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition p-1 bg-white/5 rounded hover:bg-white/10" aria-label="LinkedIn">
+              <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-text-primary transition p-1 bg-brand-text-primary rounded hover:bg-brand-text-primary" aria-label="LinkedIn">
                 <Linkedin className="w-4 h-4" />
               </a>
-              <a href="mailto:contact@advisoadvisor.ai" className="hover:text-white transition p-1 bg-white/5 rounded hover:bg-white/10" aria-label="Email">
+              <a href="mailto:contact@advisoadvisor.ai" className="hover:text-brand-text-primary transition p-1 bg-brand-text-primary rounded hover:bg-brand-text-primary" aria-label="Email">
                 <Mail className="w-4 h-4" />
               </a>
             </div>
@@ -95,7 +85,7 @@ export default function Footer() {
           {/* Sitemaps */}
           {columns.map((col, idx) => (
             <div key={idx} className="space-y-4 text-left">
-              <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-white">
+              <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-brand-text-primary">
                 {col.title}
               </h4>
               <ul className="space-y-2.5">
@@ -103,7 +93,7 @@ export default function Footer() {
                   <li key={lIdx}>
                     <button
                       onClick={() => scrollToAnchor(link.id)}
-                      className="text-xs text-brand-text-secondary hover:text-white transition cursor-pointer text-left leading-none"
+                      className="text-xs text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer text-left leading-none"
                     >
                       {link.label}
                     </button>
@@ -116,7 +106,7 @@ export default function Footer() {
         </div>
 
         {/* Bottom copyright declaration */}
-        <div className="pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 text-[10px] font-mono text-brand-text-secondary">
+        <div className="pt-8 border-t border-brand-border flex flex-col sm:flex-row items-center justify-between gap-4 text-[10px] font-mono text-brand-text-secondary">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-brand-primary" />
             <span>ADVISO ENTERPRISE DEPLOYMENT SECURED ACTIVE</span>

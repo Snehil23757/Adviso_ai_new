@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  ArrowLeft as PhArrowLeft,
   ArrowRight as PhArrowRight,
   ArrowsClockwise,
   ArrowsOutSimple,
@@ -18,6 +19,7 @@ import {
   Cloud,
   Code,
   Compass,
+  CreditCard as PhCreditCard,
   Cpu,
   CurrencyDollar,
   Database,
@@ -79,17 +81,20 @@ const icon = (Icon: PhosphorIcon, weight: PhosphorIconProps["weight"] = "duotone
 export const Activity = icon(Pulse);
 export const AlertCircle = icon(WarningCircle);
 export const AlertTriangle = icon(Warning);
+export const ArrowLeft = icon(PhArrowLeft, "bold");
 export const ArrowRight = icon(PhArrowRight, "bold");
 export const BarChart2 = icon(ChartBar);
 export const BarChart3 = icon(ChartBar);
 export const Bell = icon(BellSimple);
 export const BrainCircuit = icon(Brain);
 export const Building = icon(Buildings);
+export const Building2 = icon(Buildings);
 export const CheckCircle2 = icon(CheckCircle);
 export const CheckCircleIcon = icon(CheckCircle);
 export { CheckCircleIcon as CheckCircle };
 export const ChevronRight = icon(CaretRight, "bold");
 export const ClipboardList = icon(ClipboardText);
+export const CreditCard = icon(PhCreditCard);
 export const CpuIcon = icon(Cpu);
 export { CpuIcon as Cpu };
 export const DatabaseIcon = icon(Database);
