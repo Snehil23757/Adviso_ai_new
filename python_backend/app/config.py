@@ -8,7 +8,13 @@ class Settings(BaseSettings):
     ai_model: str = "gpt-4o-mini"
     backend_host: str = "127.0.0.1"
     backend_port: int = 8000
-    allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+    allowed_origins: str = (
+        "http://localhost:3000,"
+        "http://localhost:5173,"
+        "https://advisoai-497313.web.app,"
+        "https://advisoai-497313.firebaseapp.com"
+    )
+    allowed_origin_regex: str = r"https://.*\.(web\.app|firebaseapp\.com)"
 
     model_config = SettingsConfigDict(
         env_file=".env",

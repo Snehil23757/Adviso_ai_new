@@ -855,7 +855,7 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
       setInsights((prev) => ({
         ...prev,
         [mode]: {
-          answer: "The backend insight service could not be reached. Run .\\start-dev.ps1 from the Adviso_ai folder and try again.",
+          answer: "The backend insight service could not be reached. In local development, run .\\start-dev.ps1. In production, verify VITE_API_URL points to the deployed backend and that the backend allows your Firebase domain in CORS.",
           source: "local",
         },
       }));
@@ -986,7 +986,7 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
         ...prev,
         {
           role: "assistant",
-          content: "The backend chat endpoint is not reachable. Start the Python backend and try again.",
+          content: "The backend chat endpoint is not reachable. In local development, start the Python backend. In production, verify the deployed backend URL and CORS allowed origins.",
           source: "local",
         },
       ]);
