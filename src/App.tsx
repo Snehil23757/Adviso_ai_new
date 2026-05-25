@@ -1,3 +1,4 @@
+import AISalesAnalytics from "./pages/AISalesAnalytics";
 import React, { useState, useEffect } from "react";
 import Header from "./sections/Header.tsx";
 import Hero from "./sections/Hero.tsx";
@@ -18,6 +19,7 @@ import PaymentCheckout from "./components/PaymentCheckout.tsx";
 import AuthPage from "./components/AuthPage.tsx";
 import { ShieldAlert, Lock, CheckCircle } from "lucide-react";
 import Lenis from "lenis";
+import { initGoogleAnalytics, trackEvent, trackPageView } from "./analytics.ts";
 
 export default function App() {
   const [userEmail, setUserEmail] = useState<string | null>(() => {
@@ -35,6 +37,22 @@ export default function App() {
     if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
     return "light";
   });
+
+  useEffect(() => {
+    initGoogleAnalytics();
+  }, []);
+
+  useEffect(() => {
+    const viewTitles = {
+      landing: "Adviso AI - Landing",
+      dashboard: "Adviso AI - Dashboard",
+      checkout: "Adviso AI - Checkout",
+      login: "Adviso AI - Login",
+      register: "Adviso AI - Register",
+    };
+
+    trackPageView(viewTitles[currentView], `/${currentView}`);
+  }, [currentView]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -71,18 +89,21 @@ export default function App() {
 
   const handleAuthSuccess = (email: string) => {
     localStorage.setItem("adviso_authenticated_email", email);
+    trackEvent("login", { method: "local" });
     setUserEmail(email);
     setCurrentView("dashboard");
   };
 
   const handleLogout = () => {
     localStorage.removeItem("adviso_authenticated_email");
+    trackEvent("logout");
     setUserEmail(null);
     setCurrentView("landing");
   };
 
   const goToCheckout = (planName: string, price: string) => {
     setSelectedPlan({ name: planName, price });
+    trackEvent("begin_checkout", { plan_name: planName, plan_price: price });
     setCurrentView("checkout");
   };
 
