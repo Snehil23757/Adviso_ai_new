@@ -41,12 +41,47 @@ html.dark {
 
 /* Custom Base Utilities */
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     background-color: var(--brand-background);
     color: var(--brand-text-primary);
     font-family: var(--font-sans);
     overflow-x: hidden;
     transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+main > section:not(:first-child) {
+  content-visibility: auto;
+  contain-intrinsic-size: 820px;
+}
+
+.animate-fade-in {
+  animation: adv-fade-in 0.28s ease-out both;
+}
+
+@keyframes adv-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -121,19 +156,23 @@ html.lenis, html.lenis body {
 
 /* Adviso platform workspace */
 .adviso-platform {
-  --ap-bg: #f5f7fb;
+  --ap-bg: #f7fbff;
   --ap-surface: #ffffff;
-  --ap-surface-2: #eef2f7;
-  --ap-surface-3: #e5eaf2;
-  --ap-text: #111827;
-  --ap-muted: #64748b;
-  --ap-border: #d9e2ec;
-  --ap-accent: #2f55d4;
-  --ap-accent-soft: rgba(47, 85, 212, 0.1);
+  --ap-surface-2: #f3f7fc;
+  --ap-surface-3: #eaf1fb;
+  --ap-text: #071533;
+  --ap-muted: #627292;
+  --ap-border: #dfe8f5;
+  --ap-accent: #145dff;
+  --ap-accent-2: #0b3fcc;
+  --ap-cyan: #20d7ff;
+  --ap-accent-soft: rgba(20, 93, 255, 0.1);
   --ap-good: #047857;
   --ap-warn: #b45309;
-  --ap-chart-grid: rgba(15, 23, 42, 0.08);
-  background: var(--ap-bg);
+  --ap-chart-grid: rgba(20, 93, 255, 0.08);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(32, 215, 255, 0.13), transparent 34%),
+    linear-gradient(180deg, #ffffff 0%, var(--ap-bg) 32%, #f3f8ff 100%);
   color: var(--ap-text);
 }
 
@@ -146,6 +185,8 @@ html.lenis, html.lenis body {
   --ap-muted: #98a2b3;
   --ap-border: rgba(148, 163, 184, 0.18);
   --ap-accent: #5b6fff;
+  --ap-accent-2: #3b54d9;
+  --ap-cyan: #22d3ee;
   --ap-accent-soft: rgba(91, 111, 255, 0.14);
   --ap-good: #10b981;
   --ap-warn: #f59e0b;
@@ -163,6 +204,295 @@ html.lenis, html.lenis body {
   border-color: var(--ap-border);
 }
 
+.ap-trial-banner {
+  background: linear-gradient(90deg, #0b3fcc 0%, #145dff 48%, #0578ff 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 35px rgba(20, 93, 255, 0.24);
+}
+
+.ap-shell {
+  background:
+    radial-gradient(circle at 80% 8%, rgba(20, 93, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 249, 255, 0.95));
+}
+
+.ap-dashboard-main {
+  background:
+    linear-gradient(90deg, rgba(20, 93, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(20, 93, 255, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.ap-header {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.ap-sidebar {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 18px 0 45px rgba(15, 45, 95, 0.04);
+}
+
+.ap-card,
+.ap-panel,
+.ap-modal,
+.ap-table-wrap {
+  box-shadow: 0 18px 45px rgba(15, 45, 95, 0.06);
+}
+
+.ap-action-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border-color: var(--ap-border);
+  box-shadow: 0 18px 45px rgba(15, 45, 95, 0.07);
+}
+
+.ap-tone-blue {
+  background: rgba(20, 93, 255, 0.08);
+  color: #145dff;
+}
+
+.ap-tone-green {
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+}
+
+.ap-tone-orange {
+  background: rgba(249, 115, 22, 0.1);
+  color: #ea580c;
+}
+
+.ap-soft-pill,
+.ap-soft-badge {
+  background: rgba(20, 93, 255, 0.08);
+  color: var(--ap-accent);
+}
+
+.ap-soft-action {
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.ap-soft-action:hover {
+  transform: translateY(-1px);
+}
+
+.ap-kpi-chart-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-color: var(--ap-border);
+}
+
+.ap-floating-label {
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ap-muted);
+}
+
+.ap-ai-callout {
+  border-color: rgba(20, 93, 255, 0.18);
+  background: linear-gradient(135deg, rgba(20, 93, 255, 0.08), rgba(32, 215, 255, 0.06));
+}
+
+.ap-locked-panel {
+  background: linear-gradient(135deg, rgba(20, 93, 255, 0.08), #ffffff);
+}
+
+.ap-lock-orb,
+.ap-usage-tile {
+  background: #ffffff;
+  border-color: var(--ap-border);
+}
+
+.ap-plan-panel {
+  background: linear-gradient(135deg, rgba(20, 93, 255, 0.06), rgba(255, 255, 255, 0.86));
+  border-color: var(--ap-border);
+}
+
+.ap-enterprise-card {
+  background:
+    radial-gradient(circle at 82% 20%, rgba(32, 215, 255, 0.2), transparent 34%),
+    linear-gradient(135deg, rgba(20, 93, 255, 0.08), rgba(255, 255, 255, 0.9));
+  border-color: rgba(20, 93, 255, 0.16);
+}
+
+.ap-action-card:hover,
+.ap-card:hover {
+  border-color: rgba(20, 93, 255, 0.24);
+  box-shadow: 0 22px 60px rgba(20, 93, 255, 0.11);
+}
+
+.ap-top-search {
+  background: #ffffff;
+  border-color: var(--ap-border);
+  box-shadow: 0 10px 30px rgba(15, 45, 95, 0.04);
+}
+
+.ap-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.8rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--ap-muted);
+  font-size: 0.875rem;
+  font-weight: 750;
+  transition: all 0.18s ease;
+}
+
+.ap-nav-item:hover {
+  background: #f2f7ff;
+  color: var(--ap-text);
+}
+
+.ap-nav-item-active {
+  background: linear-gradient(135deg, #145dff 0%, #0b6bff 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(20, 93, 255, 0.24);
+}
+
+.ap-nav-icon {
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+.ap-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.45rem;
+  background: rgba(20, 93, 255, 0.08);
+  color: var(--ap-accent);
+  padding: 0.12rem 0.42rem;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.ap-nav-badge-premium {
+  background: rgba(20, 93, 255, 0.11);
+}
+
+.ap-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--ap-border);
+  background: #ffffff;
+  color: var(--ap-text);
+  transition: all 0.18s ease;
+}
+
+.ap-icon-btn:hover {
+  border-color: rgba(20, 93, 255, 0.25);
+  color: var(--ap-accent);
+  box-shadow: 0 10px 24px rgba(20, 93, 255, 0.1);
+}
+
+.ap-help-card {
+  border-color: rgba(20, 93, 255, 0.12);
+  background: linear-gradient(135deg, rgba(20, 93, 255, 0.08), rgba(32, 215, 255, 0.06));
+}
+
+.adviso-platform.dark {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(34, 211, 238, 0.1), transparent 34%),
+    linear-gradient(180deg, #070b16 0%, #080b13 100%);
+}
+
+.adviso-platform.dark .ap-shell {
+  background:
+    radial-gradient(circle at 80% 8%, rgba(91, 111, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(8, 11, 19, 0.96), rgba(12, 17, 29, 0.98));
+}
+
+.adviso-platform.dark .ap-header,
+.adviso-platform.dark .ap-sidebar,
+.adviso-platform.dark .ap-top-search,
+.adviso-platform.dark .ap-icon-btn,
+.adviso-platform.dark .ap-btn,
+.adviso-platform.dark .ap-action-card {
+  background: rgba(16, 21, 31, 0.92);
+}
+
+.adviso-platform.dark .ap-action-card,
+.adviso-platform.dark .ap-card,
+.adviso-platform.dark .ap-panel,
+.adviso-platform.dark .ap-modal,
+.adviso-platform.dark .ap-table-wrap {
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
+}
+
+.adviso-platform.dark .ap-kpi-chart-panel,
+.adviso-platform.dark .ap-locked-panel,
+.adviso-platform.dark .ap-usage-tile,
+.adviso-platform.dark .ap-lock-orb,
+.adviso-platform.dark .ap-plan-panel {
+  background: rgba(16, 21, 31, 0.82) !important;
+  border-color: var(--ap-border);
+}
+
+.adviso-platform.dark .ap-kpi-chart-panel {
+  background: linear-gradient(180deg, rgba(16, 21, 31, 0.96), rgba(12, 17, 29, 0.96)) !important;
+}
+
+.adviso-platform.dark .recharts-wrapper,
+.adviso-platform.dark .recharts-surface {
+  background: transparent !important;
+}
+
+.adviso-platform.dark .ap-enterprise-card {
+  background:
+    radial-gradient(circle at 82% 20%, rgba(34, 211, 238, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(91, 111, 255, 0.13), rgba(16, 21, 31, 0.9));
+  border-color: rgba(91, 111, 255, 0.25);
+}
+
+.adviso-platform.dark .ap-ai-callout {
+  border-color: rgba(91, 111, 255, 0.25);
+  background: linear-gradient(135deg, rgba(91, 111, 255, 0.13), rgba(34, 211, 238, 0.06));
+}
+
+.adviso-platform.dark .ap-floating-label {
+  background: rgba(21, 27, 39, 0.9);
+  color: var(--ap-muted);
+}
+
+.adviso-platform.dark .ap-tone-blue,
+.adviso-platform.dark .ap-soft-pill,
+.adviso-platform.dark .ap-soft-badge {
+  background: rgba(91, 111, 255, 0.14);
+  color: #8aa4ff;
+}
+
+.adviso-platform.dark .ap-tone-green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.adviso-platform.dark .ap-tone-orange {
+  background: rgba(249, 115, 22, 0.13);
+  color: #fb923c;
+}
+
+.adviso-platform.dark .ap-nav-item:hover {
+  background: rgba(91, 111, 255, 0.12);
+}
+
+.adviso-platform.dark .bg-white,
+.adviso-platform.dark .bg-blue-50,
+.adviso-platform.dark .bg-emerald-50,
+.adviso-platform.dark .bg-orange-50 {
+  background-color: rgba(21, 27, 39, 0.92) !important;
+}
+
+.adviso-platform.dark .text-\[\#145DFF\],
+.adviso-platform.dark .text-\[\#0B3FCC\] {
+  color: #8aa4ff !important;
+}
+
 .ap-muted {
   color: var(--ap-muted);
 }
@@ -173,14 +503,16 @@ html.lenis, html.lenis body {
 
 .ap-btn {
   border: 1px solid var(--ap-border);
-  background: var(--ap-surface-2);
+  background: #ffffff;
   color: var(--ap-text);
+  box-shadow: 0 8px 22px rgba(15, 45, 95, 0.04);
 }
 
 .ap-btn-primary {
   border: 1px solid var(--ap-accent);
-  background: var(--ap-accent);
+  background: linear-gradient(135deg, var(--ap-accent) 0%, #0b6bff 100%);
   color: #ffffff;
+  box-shadow: 0 14px 30px rgba(20, 93, 255, 0.2);
 }
 
 .ap-input {

@@ -21,8 +21,10 @@ import {
   Compass,
   CreditCard as PhCreditCard,
   Cpu,
+  CurrencyInr,
   CurrencyDollar,
   Database,
+  DeviceMobile,
   DownloadSimple,
   EnvelopeSimple,
   EyeSlash,
@@ -46,6 +48,7 @@ import {
   Percent,
   Pulse,
   Question,
+  QrCode as PhQrCode,
   RocketLaunch,
   Shield,
   ShieldCheck,
@@ -126,6 +129,8 @@ export const Network = icon(Cloud);
 export const PieChart = icon(ChartPie);
 export const ChartDonutIcon = icon(ChartDonut);
 export { ChartDonutIcon as ChartDonut };
+export const IndianRupee = icon(CurrencyInr);
+export const QrCode = icon(PhQrCode);
 export const RefreshCw = icon(ArrowsClockwise);
 export const Rocket = icon(RocketLaunch);
 export const Search = icon(MagnifyingGlass);
@@ -134,6 +139,7 @@ export const Send = icon(PaperPlaneTilt);
 export const Server = icon(Cloud);
 export const ShieldAlert = icon(ShieldWarning);
 export const Sliders = icon(SlidersHorizontal);
+export const Smartphone = icon(DeviceMobile);
 export const Sparkles = icon(Sparkle);
 export const SunIcon = icon(Sun);
 export { SunIcon as Sun };

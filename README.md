@@ -2,7 +2,7 @@
 
 Adviso AI is an explainable AI-powered business intelligence and decision-support platform. It helps organizations, setups, MSMEs, founders, and business analysts transform fragmented operational data into strategic recommendations, what-if scenario simulations, and actionable execution checklists.
 
-This repository contains the complete full-stack codebase configured with a React/Vite/Tailwind frontend, a robust Express/TypeScript backend, real-time Gemini strategic report synthesis, and containerized Docker layers.
+This repository contains the complete full-stack codebase configured with a React/Vite/Tailwind frontend, a FastAPI production backend, optional OpenAI report synthesis, and containerized Docker layers.
 
 ---
 
@@ -27,7 +27,7 @@ This repository contains the complete full-stack codebase configured with a Reac
 ├── backend/                  # Full-Stack Express Server Node API
 │   ├── config/               # Environmental config, API checks
 │   ├── routes/               # API endpoint routing (/api/analyze)
-│   └── services/             # Core Gemini AI strategic synthesis service
+│   └── services/             # Legacy local strategy fallback service
 ├── src/                      # Client-side React SPA
 │   ├── components/           # Live Portal widgets and interactive Recharts
 │   ├── sections/             # Page panels (Hero, Features, Pricing, etc.)

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { CheckCircle2, ChevronRight, HelpCircle } from "lucide-react";
 import { motion } from "motion/react";
 
-export default function Pricing({ onSelectPlan }: { onSelectPlan?: (name: string, price: string) => void }) {
+export default function Pricing({ onSelectPlan }: { onSelectPlan?: (name: string, price: string, amountPaise: number) => void }) {
   const [isAnnual, setIsAnnual] = useState(true);
 
   const plans = [
@@ -215,7 +215,7 @@ export default function Pricing({ onSelectPlan }: { onSelectPlan?: (name: string
                   <button
                     onClick={() => {
                       if (onSelectPlan) {
-                        onSelectPlan(p.name, `₹${finalizedPrice.toLocaleString("en-IN")}`);
+                        onSelectPlan(p.name, `₹${finalizedPrice.toLocaleString("en-IN")}`, finalizedPrice * 100);
                       } else {
                         const portal = document.getElementById("strategy-portal");
                         if (portal) {

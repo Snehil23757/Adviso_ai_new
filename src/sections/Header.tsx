@@ -6,11 +6,13 @@ interface HeaderProps {
   userEmail: string | null;
   onLogout: () => void;
   onTriggerAuth: () => void;
+  onOpenApp?: () => void;
+  onNavigatePublic?: (path: string) => void;
   theme?: "light" | "dark";
   toggleTheme?: () => void;
 }
 
-export default function Header({ userEmail, onLogout, onTriggerAuth, theme, toggleTheme }: HeaderProps) {
+export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, onNavigatePublic, theme, toggleTheme }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -22,8 +24,12 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, togg
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const scrollToSection = (id: string) => {
+  const scrollToSection = (id: string, path?: string) => {
     setIsMenuOpen(false);
+    if (path && onNavigatePublic) {
+      onNavigatePublic(path);
+      return;
+    }
     const element = document.getElementById(id);
     if (element) {
       const offset = 80; // height of header
@@ -45,7 +51,13 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, togg
         
         {/* Left: Adviso AI Logo with SVG Graphic */}
         <div 
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          onClick={() => {
+            if (onNavigatePublic) {
+              onNavigatePublic("/");
+              return;
+            }
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
           className="cursor-pointer group flex items-center h-12"
         >
           <Logo size="md" />
@@ -54,15 +66,14 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, togg
         {/* Center: Navigation Options */}
         <nav className="hidden lg:flex items-center gap-7">
           {[
-            { label: "Platform", id: "platform-overview" },
-            { label: "Features", id: "core-features" },
-            { label: "Use Cases", id: "use-cases" },
-            { label: "Architecture", id: "architecture" },
-            { label: "Pricing", id: "pricing" },
+            { label: "Features", id: "core-features", path: "/features" },
+            { label: "Pricing", id: "pricing", path: "/pricing" },
+            { label: "Docs", id: "architecture", path: "/about" },
+            { label: "Contact", id: "contact", path: "/contact" },
           ].map((item, idx) => (
             <button
               key={idx}
-              onClick={() => scrollToSection(item.id)}
+              onClick={() => scrollToSection(item.id, item.path)}
               className="text-sm font-medium text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer"
             >
               {item.label}
@@ -83,20 +94,13 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, togg
           )}
 
           {userEmail ? (
-            <div className="flex items-center gap-3">
-              <div className="bg-brand-primary/10 border border-brand-primary/20 rounded-xl px-3 py-1.5 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span className="text-xs font-mono font-medium text-brand-text-primary max-w-[140px] truncate">
-                  {userEmail}
-                </span>
-              </div>
-              <button 
-                onClick={onLogout}
-                className="text-xs font-bold text-brand-text-secondary hover:text-brand-text-primary transition bg-transparent hover:bg-brand-surface px-3 py-1.5 rounded-lg border border-brand-border cursor-pointer"
-              >
-                Log Out
-              </button>
-            </div>
+            <button
+              onClick={onOpenApp}
+              className="bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Open App</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           ) : (
             <div className="flex items-center gap-3">
               <button 
@@ -140,15 +144,14 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, togg
         <div className="lg:hidden bg-brand-background border-b border-brand-border px-6 py-6 space-y-4 animate-fade-in shadow-xl">
           <div className="flex flex-col gap-4">
             {[
-              { label: "Platform Overview", id: "platform-overview" },
-              { label: "Core Features", id: "core-features" },
-              { label: "Use Cases", id: "use-cases" },
-              { label: "Architecture", id: "architecture" },
-              { label: "Pricing", id: "pricing" },
+              { label: "Features", id: "core-features", path: "/features" },
+              { label: "Pricing", id: "pricing", path: "/pricing" },
+              { label: "Docs", id: "architecture", path: "/about" },
+              { label: "Contact", id: "contact", path: "/contact" },
             ].map((item, idx) => (
               <button
                 key={idx}
-                onClick={() => scrollToSection(item.id)}
+                onClick={() => scrollToSection(item.id, item.path)}
                 className="text-left py-2 text-base font-medium text-brand-text-secondary hover:text-brand-text-primary transition"
               >
                 {item.label}
@@ -158,18 +161,15 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, theme, togg
           <div className="pt-6 border-t border-brand-border flex flex-col gap-3">
             {userEmail ? (
               <div className="space-y-3">
-                <div className="bg-brand-primary/10 border border-brand-primary/20 rounded-xl px-4 py-3 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-                  <span className="text-sm font-medium text-brand-text-primary max-w-[200px] truncate">{userEmail}</span>
-                </div>
                 <button 
                   onClick={() => {
-                    onLogout();
+                    onOpenApp?.();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full text-center py-3 text-sm font-bold text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-xl cursor-pointer"
+                  className="w-full bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  Sign Out
+                  <span>Open App</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             ) : (

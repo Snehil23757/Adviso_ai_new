@@ -12,7 +12,7 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Verify secret configuration variables (e.g. Gemini API key)
+  // Verify runtime configuration for the optional Express wrapper.
   verifyConfig();
 
   // Mount API endpoints

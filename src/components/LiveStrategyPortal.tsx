@@ -17,7 +17,7 @@ import {
   Layers,
 } from "lucide-react";
 import { StrategicReport } from "../types.js";
-import { apiUrl } from "../config";
+import { apiFailureMessage, authorizedFetch, readApiJson } from "../config";
 
 type BusinessType = "MSME" | "Startup" | "Founder" | "Analyst";
 
@@ -72,7 +72,7 @@ export default function LiveStrategyPortal() {
     }, 700);
 
     try {
-      const response = await fetch(apiUrl("/api/analyze"), {
+      const response = await authorizedFetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -90,11 +90,7 @@ export default function LiveStrategyPortal() {
 
       clearInterval(stepInterval);
 
-      if (!response.ok) {
-        throw new Error("Strategic analysis engine reported an operational bottleneck.");
-      }
-
-      const result = await response.json();
+      const result = await readApiJson<{ success?: boolean; report?: StrategicReport }>(response);
       if (result.success && result.report) {
         setReport(result.report);
       } else {
@@ -103,7 +99,7 @@ export default function LiveStrategyPortal() {
     } catch (err: any) {
       clearInterval(stepInterval);
       console.error(err);
-      setErrorMsg(err.message || "An unexpected error impeded intelligence assembly.");
+      setErrorMsg(apiFailureMessage(err, "An unexpected error impeded intelligence assembly."));
     } finally {
       setIsLoading(false);
     }

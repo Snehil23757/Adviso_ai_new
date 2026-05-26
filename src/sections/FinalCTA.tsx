@@ -12,7 +12,7 @@ export default function FinalCTA() {
   };
 
   return (
-    <section className="relative py-24 overflow-hidden border-t border-brand-border">
+    <section id="contact" className="relative py-24 overflow-hidden border-t border-brand-border">
       {/* Background Visual Grids and Auras */}
       <div className="absolute inset-0 subtle-grid opacity-15 pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] radar-sweep rounded-full opacity-35 blur-[120px] pointer-events-none"></div>

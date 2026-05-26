@@ -1,79 +1,272 @@
-import React, { useState } from "react";
-import { ArrowLeft, CreditCard, Lock, ShieldCheck, CheckCircle2 } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { ArrowLeft, CheckCircle2, CreditCard, IndianRupee, Lock, QrCode, ShieldCheck, Smartphone } from "lucide-react";
 import { motion } from "motion/react";
+
+import { apiFailureMessage, authorizedFetch, readApiJson } from "../config";
+import razorpayUpiQr from "../assets/images/razorpay_upi_qr.jpeg";
+import { useAuth } from "../lib/AuthContext.tsx";
+import { usePermissions } from "../subscriptions/SubscriptionProvider";
+import type { PlanId } from "../subscriptions/permissions";
 import Logo from "./Logo.tsx";
 
 interface PaymentCheckoutProps {
   plan: {
+    id?: PlanId;
     name: string;
     price: string;
+    amountPaise: number;
   };
   onBack: () => void;
+  onCancel?: () => void;
+  onComplete?: () => void;
 }
 
-export default function PaymentCheckout({ plan, onBack }: PaymentCheckoutProps) {
+interface CreateOrderResponse {
+  success: boolean;
+  order_id: string;
+  amount: number;
+  currency: string;
+}
+
+interface VerifyPaymentResponse {
+  success: boolean;
+  order_id: string;
+  payment_id: string;
+  session?: unknown;
+}
+
+interface RazorpaySuccessResponse {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayFailedResponse {
+  error?: {
+    description?: string;
+    reason?: string;
+    code?: string;
+  };
+}
+
+interface RazorpayCheckoutOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  image?: string;
+  prefill?: {
+    name?: string;
+    email?: string;
+    contact?: string;
+  };
+  theme?: {
+    color?: string;
+  };
+  config?: {
+    display?: {
+      hide?: Array<{
+        method: "upi" | "card" | "netbanking" | "wallet" | "emi" | "paylater";
+      }>;
+      sequence?: string[];
+      preferences?: {
+        show_default_blocks?: boolean;
+      };
+    };
+  };
+  modal?: {
+    ondismiss?: () => void;
+  };
+  handler: (response: RazorpaySuccessResponse) => void;
+}
+
+interface RazorpayCheckoutInstance {
+  open: () => void;
+  on: (eventName: "payment.failed", handler: (response: RazorpayFailedResponse) => void) => void;
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
+  }
+}
+
+function planIdFromName(planName: string): PlanId | null {
+  const normalized = planName.toLowerCase();
+  if (normalized === "go" || normalized === "pro" || normalized === "enterprise") return normalized;
+  return null;
+}
+
+function validAmountPaise(amount: number) {
+  return Number.isFinite(amount) && amount >= 100 ? Math.round(amount) : 0;
+}
+
+function formatInrFromPaise(amount: number) {
+  if (!amount) return "Unavailable";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount / 100);
+}
+
+function paymentErrorMessage(error: unknown) {
+  const message = apiFailureMessage(error, "Payment could not be completed. Please try again.");
+  if (/http 5\d\d/i.test(message) || /backend request failed/i.test(message)) {
+    return "Payment service is temporarily unavailable. Please try again in a moment.";
+  }
+  if (/cancelled/i.test(message)) return "Payment was cancelled before completion.";
+  return message;
+}
+
+export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: PaymentCheckoutProps) {
+  const { profile, user } = useAuth();
+  const { refreshSubscription } = usePermissions();
   const [isProcessing, setIsProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("card");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [paymentId, setPaymentId] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsProcessing(true);
-    // Simulate payment processing
-    setTimeout(() => {
-      setIsProcessing(false);
-      setSuccess(true);
-    }, 2500);
+  const targetPlanId = useMemo(() => plan.id || planIdFromName(plan.name), [plan.id, plan.name]);
+  const amountPaise = validAmountPaise(plan.amountPaise);
+  const amountLabel = amountPaise ? formatInrFromPaise(amountPaise) : "Unavailable";
+  const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
+
+  const verifyPayment = async (response: RazorpaySuccessResponse) => {
+    const verifyResponse = await authorizedFetch("/api/verify-payment", {
+      method: "POST",
+      body: JSON.stringify(response),
+    });
+    const verification = await readApiJson<VerifyPaymentResponse>(verifyResponse);
+    if (!verification.success) throw new Error("Payment verification failed.");
+    setPaymentId(verification.payment_id);
+    await refreshSubscription({ notify: true });
+    setSuccess(true);
   };
 
-  if (isProcessing) {
-    return (
-      <div className="min-h-screen bg-brand-background flex items-center justify-center p-6 text-brand-text-primary selection:bg-brand-primary/30 transition-colors duration-500">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-brand-surface border border-brand-border p-8 rounded-3xl space-y-8 relative overflow-hidden shadow-2xl"
-        >
-          <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-brand-text-primary/10 rounded-full animate-pulse flex items-center justify-center">
-               <ShieldCheck className="w-8 h-8 text-brand-text-secondary/50" />
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="w-3/4 h-6 bg-brand-text-primary/10 rounded-lg animate-pulse mx-auto"></div>
-            <div className="w-1/2 h-4 bg-brand-text-primary/10 rounded-lg animate-pulse mx-auto"></div>
-          </div>
-          <div className="space-y-3 pt-4 border-t border-brand-border/50">
-            <div className="w-full h-12 bg-brand-text-primary/10 rounded-xl animate-pulse"></div>
-            <div className="w-full h-12 bg-brand-text-primary/10 rounded-xl animate-pulse"></div>
-          </div>
-          <div className="text-center pt-2">
-            <span className="text-xs font-mono text-brand-text-secondary uppercase tracking-widest font-bold animate-pulse">
-              Authenticating Transaction...
-            </span>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
+  const startCheckout = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setErrorMessage("");
+
+    if (!user) {
+      setErrorMessage("Sign in before checkout so the subscription can be attached to your workspace.");
+      return;
+    }
+
+    if (!razorpayKeyId) {
+      setErrorMessage("Razorpay public key is missing. Add VITE_RAZORPAY_KEY_ID to the frontend environment.");
+      return;
+    }
+
+    const RazorpayConstructor = window.Razorpay;
+    if (!RazorpayConstructor) {
+      setErrorMessage("Razorpay checkout script did not load. Check your network connection and retry.");
+      return;
+    }
+
+    if (!amountPaise) {
+      setErrorMessage("The selected plan amount is invalid. Minimum Razorpay order amount is 100 paise.");
+      return;
+    }
+
+    if (!targetPlanId) {
+      setErrorMessage("The selected plan is not available for checkout.");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const orderResponse = await authorizedFetch("/api/create-order", {
+        method: "POST",
+        body: JSON.stringify({
+          amount: amountPaise,
+          currency: "INR",
+          plan_id: targetPlanId,
+          receipt: `adviso_${plan.name.toLowerCase()}_${Date.now()}`.slice(0, 40),
+        }),
+      });
+      const order = await readApiJson<CreateOrderResponse>(orderResponse);
+
+      await new Promise<void>((resolve, reject) => {
+        const checkout = new RazorpayConstructor({
+          key: razorpayKeyId,
+          amount: order.amount,
+          currency: order.currency,
+          name: "Adviso AI",
+          description: `${plan.name} subscription`,
+          order_id: order.order_id,
+          image: "/favicon.png",
+          prefill: {
+            name: profile?.full_name || user.displayName || "",
+            email: profile?.email || user.email || "",
+          },
+          theme: {
+            color: "#2563eb",
+          },
+          config: {
+            display: {
+              sequence: ["upi", "card"],
+              hide: [
+                { method: "netbanking" },
+                { method: "wallet" },
+                { method: "emi" },
+                { method: "paylater" },
+              ],
+              preferences: {
+                show_default_blocks: false,
+              },
+            },
+          },
+          modal: {
+            ondismiss: () => reject(new Error("Payment was cancelled before completion.")),
+          },
+          handler: (paymentResponse) => {
+            verifyPayment(paymentResponse)
+              .then(resolve)
+              .catch(reject);
+          },
+        });
+
+        checkout.on("payment.failed", (failure) => {
+          reject(new Error(failure.error?.description || failure.error?.reason || "Payment failed in Razorpay Checkout."));
+        });
+
+        checkout.open();
+      });
+    } catch (error) {
+      setErrorMessage(paymentErrorMessage(error));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   if (success) {
     return (
       <div className="min-h-screen bg-brand-background flex items-center justify-center p-6 text-brand-text-primary selection:bg-brand-primary/30 transition-colors duration-500">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="max-w-md w-full bg-brand-surface border border-emerald-500/30 p-8 rounded-3xl text-center space-y-6 relative overflow-hidden shadow-2xl"
         >
-          <div className="absolute inset-0 bg-emerald-500/5 pulse"></div>
+          <div className="absolute inset-0 bg-emerald-500/5 pulse" />
           <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
             <CheckCircle2 className="w-10 h-10 text-emerald-500" />
           </div>
           <div>
-            <h2 className="text-3xl font-bold text-brand-text-primary mb-2">Payment Successful!</h2>
-            <p className="text-brand-text-secondary text-sm">Your subscription to {plan.name} has been activated. Welcome to Adviso Enterprise Platform.</p>
+            <h2 className="text-3xl font-bold text-brand-text-primary mb-2">Payment Successful</h2>
+            <p className="text-brand-text-secondary text-sm">
+              Your {plan.name} subscription is verified and active for this workspace.
+            </p>
+            {paymentId && (
+              <p className="text-[11px] font-mono text-brand-text-secondary mt-3 break-all">
+                Payment ID: {paymentId}
+              </p>
+            )}
           </div>
-          <button onClick={onBack} className="w-full bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-emerald-500/20 hover:-translate-y-0.5 transition-transform">
+          <button onClick={onComplete || onBack} className="w-full bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-emerald-500/20 hover:-translate-y-0.5 transition-transform">
             Go to Dashboard
           </button>
         </motion.div>
@@ -82,206 +275,154 @@ export default function PaymentCheckout({ plan, onBack }: PaymentCheckoutProps) 
   }
 
   return (
-    <div className="min-h-screen bg-brand-background flex text-brand-text-primary selection:bg-brand-primary/30 w-full relative overflow-hidden transition-colors duration-500">
-      {/* Background Graphic */}
-      <div className="absolute top-0 right-0 w-[50vw] h-[100vh] bg-gradient-to-bl from-brand-primary/5 via-transparent to-transparent pointer-events-none"></div>
+    <div className="min-h-screen bg-[#070d1b] flex text-white selection:bg-blue-500/30 w-full relative overflow-hidden transition-colors duration-500">
+      <div className="absolute inset-0 subtle-grid opacity-15 pointer-events-none" />
+      <div className="absolute -top-32 right-[-12%] h-[520px] w-[720px] rounded-full bg-blue-500/10 blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-[-28%] left-[-16%] h-[620px] w-[620px] rounded-full bg-cyan-400/5 blur-[150px] pointer-events-none" />
 
-      <div className="w-full max-w-[2000px] mx-auto px-6 md:px-12 xl:px-24 flex flex-col pt-8 lg:pt-0">
-        
-        {/* Navigation Bar inside checkout */}
+      <div className="w-full max-w-[1500px] mx-auto px-6 md:px-12 xl:px-20 flex flex-col pt-8 lg:pt-0 relative z-10">
         <header className="h-24 flex items-center justify-between w-full relative z-20 shrink-0">
-          <button 
-            onClick={onBack}
-            className="flex items-center gap-2 text-sm font-bold text-brand-text-secondary hover:text-brand-text-primary transition-colors"
+          <button
+            onClick={onCancel || onBack}
+            className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Go Back
           </button>
-          <div className="flex items-center gap-3">
-             <div className="w-8 h-8 rounded-lg bg-brand-primary text-white flex items-center justify-center">
-              <span className="font-bold text-xs">AI</span>
-            </div>
-            <span className="font-bold tracking-tight">Adviso AI</span>
+          <div className="flex items-center">
+            <Logo size="md" className="text-white" />
           </div>
         </header>
 
-        <div className="flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-24 items-center">
-          
-          {/* Left Column: Order Summary */}
-          <motion.div 
+        <div className="flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-24 items-center min-h-[calc(100vh-6rem)] py-12 lg:py-0">
+          <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="lg:col-span-6 xl:col-span-5 flex flex-col space-y-10 py-12"
+            className="lg:col-span-6 xl:col-span-5 flex flex-col space-y-8"
           >
             <div className="space-y-4">
-              <span className="text-xs font-mono text-brand-primary font-bold uppercase tracking-widest bg-brand-primary/10 px-3 py-1.5 rounded-full border border-brand-primary/20 inline-block">
-                SECURE CHECKOUT
+              <span className="text-xs font-mono text-blue-400 font-bold uppercase tracking-widest bg-blue-500/10 px-3 py-1.5 rounded-full border border-blue-400/20 inline-block">
+                UPI + Card Checkout
               </span>
-              <h1 className="text-4xl lg:text-5xl font-black text-brand-text-primary tracking-tight leading-tight">
-                Complete your <br/>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-blue-400">subscription</span>
+              <h1 className="text-4xl lg:text-6xl font-black tracking-tight leading-tight">
+                Pay with UPI <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">or test card</span>
               </h1>
+              <p className="text-sm text-slate-400 leading-relaxed max-w-md">
+                Open a secure Razorpay checkout session, scan the QR code, choose a UPI app, or enter Razorpay test card details. Your plan unlocks only after server-side verification.
+              </p>
             </div>
 
-            <div className="bg-brand-surface border border-brand-border rounded-3xl p-8 space-y-6 shadow-xl">
-              <div className="flex items-start justify-between">
+            <div className="bg-slate-900/70 border border-slate-700/70 rounded-3xl p-8 space-y-6 shadow-2xl shadow-black/20">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-2xl font-bold text-brand-text-primary">{plan.name} Plan</h3>
-                  <p className="text-sm text-brand-text-secondary mt-1">Billed annually securely via Merchant Network.</p>
+                  <h3 className="text-2xl font-bold text-white">{plan.name} Plan</h3>
+                  <p className="text-sm text-slate-400 mt-1">UPI or card secure test payment.</p>
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-black text-brand-text-primary">{plan.price}</div>
-                  <div className="text-xs text-brand-text-secondary mt-1 tracking-widest uppercase font-mono">/ month</div>
+                  <div className="text-3xl font-black text-white">{amountLabel}</div>
+                  <div className="text-xs text-slate-500 mt-1 tracking-widest uppercase font-mono">INR</div>
                 </div>
               </div>
-              
-              <div className="w-full h-px bg-brand-border"></div>
-              
+
+              <div className="w-full h-px bg-slate-700/80" />
+
               <div className="space-y-4 pt-2">
-                <div className="flex items-center gap-3 text-sm text-brand-text-primary font-medium">
-                  <CheckCircle2 className="w-5 h-5 text-brand-primary" /> Continuous Operations sync
+                <div className="flex items-center gap-3 text-sm text-slate-100 font-medium">
+                  <CheckCircle2 className="w-5 h-5 text-blue-400" /> UPI QR, UPI app, and card checkout
                 </div>
-                <div className="flex items-center gap-3 text-sm text-brand-text-primary font-medium">
-                  <CheckCircle2 className="w-5 h-5 text-brand-primary" /> What-if Simulation algorithms
+                <div className="flex items-center gap-3 text-sm text-slate-100 font-medium">
+                  <CheckCircle2 className="w-5 h-5 text-blue-400" /> No netbanking options requested
                 </div>
-                <div className="flex items-center gap-3 text-sm text-brand-text-primary font-medium">
-                  <CheckCircle2 className="w-5 h-5 text-brand-primary" /> Zero-Trust security protocol
+                <div className="flex items-center gap-3 text-sm text-slate-100 font-medium">
+                  <CheckCircle2 className="w-5 h-5 text-blue-400" /> Plan activates after payment verification
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 text-xs text-brand-text-secondary opacity-80 p-4 rounded-2xl border border-brand-border/50 bg-brand-surface-secondary/50">
+            <div className="flex items-center gap-4 text-xs text-slate-400 p-4 rounded-2xl border border-slate-700/60 bg-slate-900/50">
               <ShieldCheck className="w-8 h-8 text-emerald-500 shrink-0" />
-              <p className="leading-relaxed">Guaranteed secure transaction. 256-bit SSL encryption. <br/> PCI-DSS Level 1 compliant gateway processing.</p>
+              <p className="leading-relaxed">
+                Test mode is active. Use Razorpay UPI or card test details in the checkout modal to complete the transaction.
+              </p>
             </div>
           </motion.div>
 
-          {/* Right Column: Payment Form */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="lg:col-span-6 xl:col-span-7 flex justify-end"
           >
-            <div className="w-full max-w-xl bg-brand-surface border border-brand-border p-8 sm:p-12 rounded-[2rem] shadow-2xl relative">
-              <form onSubmit={handleSubmit} className="relative z-10 space-y-8">
-                
-                {/* Payment Method Selector */}
+            <div className="w-full max-w-xl bg-slate-900/72 border border-slate-700/80 p-8 sm:p-12 rounded-[2rem] shadow-2xl shadow-black/30 relative">
+              <form onSubmit={startCheckout} className="relative z-10 space-y-8">
                 <div className="space-y-4">
-                  <label className="text-xs font-bold text-brand-text-secondary uppercase tracking-wider font-mono block">Payment Method</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div 
-                      onClick={() => setPaymentMethod("card")}
-                      className={`h-16 rounded-xl flex items-center justify-center cursor-pointer transition-all border ${
-                        paymentMethod === "card" 
-                          ? "border-brand-primary bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/50 shadow-sm" 
-                          : "border-brand-border bg-brand-surface text-brand-text-secondary hover:border-brand-text-primary/30"
-                      }`}
-                    >
-                      <CreditCard className="w-6 h-6" />
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono block">
+                    Payment Gateway
+                  </label>
+                  <div className="rounded-2xl border border-blue-400/30 bg-blue-500/10 p-5 flex items-start gap-4">
+                    <div className="h-12 w-12 rounded-xl bg-blue-500 text-white flex items-center justify-center shrink-0">
+                      <QrCode className="w-6 h-6" />
                     </div>
-                    <div 
-                      onClick={() => setPaymentMethod("gpay")}
-                      className={`h-16 rounded-xl flex items-center justify-center font-bold text-sm cursor-pointer transition-all border ${
-                        paymentMethod === "gpay" 
-                          ? "border-brand-primary bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/50 shadow-sm" 
-                          : "border-brand-border bg-brand-surface text-brand-text-secondary hover:border-brand-text-primary/30"
-                      }`}
-                    >
-                      GPay
-                    </div>
-                    <div 
-                      onClick={() => setPaymentMethod("razorpay")}
-                      className={`h-16 rounded-xl flex items-center justify-center font-bold text-sm cursor-pointer transition-all border ${
-                        paymentMethod === "razorpay" 
-                          ? "border-brand-primary bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/50 shadow-sm" 
-                          : "border-brand-border bg-brand-surface text-brand-text-secondary hover:border-brand-text-primary/30"
-                      }`}
-                    >
-                      Razorpay
+                    <div>
+                      <h3 className="font-bold text-white">UPI QR, App, and Card Checkout</h3>
+                      <p className="text-sm text-slate-400 mt-1 leading-6">
+                        Razorpay opens checkout with UPI and card options. Adviso AI verifies the payment signature before activating the plan.
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <label className="text-xs font-bold text-brand-text-secondary uppercase tracking-wider font-mono block mb-2">
-                    {paymentMethod === 'card' ? 'Card Details' : 'Account Details'}
-                  </label>
-                  
-                  {paymentMethod === 'card' && (
-                    <div className="space-y-4">
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          required 
-                          placeholder="Cardholder Name" 
-                          className="w-full h-14 bg-brand-surface-secondary/50 border border-brand-border rounded-xl px-4 text-sm text-brand-text-primary placeholder-brand-text-secondary/50 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/50 transition-all shadow-sm"
-                        />
-                      </div>
-                      
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          required 
-                          placeholder="0000 0000 0000 0000" 
-                          className="w-full h-14 bg-brand-surface-secondary/50 border border-brand-border rounded-xl px-12 text-sm text-brand-text-primary placeholder-brand-text-secondary/50 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/50 transition-all font-mono shadow-sm"
-                        />
-                        <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text-secondary" />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <input 
-                          type="text" 
-                          required 
-                          placeholder="MM/YY" 
-                          className="w-full h-14 bg-brand-surface-secondary/50 border border-brand-border rounded-xl px-4 text-sm text-brand-text-primary placeholder-brand-text-secondary/50 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/50 transition-all font-mono shadow-sm"
-                        />
-                        <div className="relative">
-                          <input 
-                            type="text" 
-                            required 
-                            placeholder="CVC" 
-                            className="w-full h-14 bg-brand-surface-secondary/50 border border-brand-border rounded-xl px-4 pr-12 text-sm text-brand-text-primary placeholder-brand-text-secondary/50 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/50 transition-all font-mono shadow-sm"
-                          />
-                          <ShieldCheck className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-text-secondary/50" />
-                        </div>
-                      </div>
+                <div className="grid sm:grid-cols-[170px_minmax(0,1fr)] gap-5 items-center rounded-2xl border border-slate-700/70 bg-slate-950/40 p-5">
+                  <div className="mx-auto w-40 overflow-hidden rounded-2xl bg-white shadow-2xl shadow-blue-500/10 ring-1 ring-white/10">
+                    <img
+                      src={razorpayUpiQr}
+                      alt="Razorpay UPI QR code for Adviso AI"
+                      className="block h-auto w-full"
+                    />
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 text-sm font-bold text-white">
+                      <Smartphone className="w-5 h-5 text-blue-400" />
+                      Scan the QR from any UPI app
                     </div>
-                  )}
-                  {paymentMethod !== 'card' && (
-                    <div className="space-y-4">
-                      <div className="relative">
-                        <input 
-                          type="email" 
-                          required 
-                          placeholder="Email Address linked to Account" 
-                          className="w-full h-14 bg-brand-surface-secondary/50 border border-brand-border rounded-xl px-4 text-sm text-brand-text-primary placeholder-brand-text-secondary/50 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/50 transition-all shadow-sm"
-                        />
-                      </div>
-                      <div className="bg-brand-surface-secondary/50 border border-brand-border p-6 rounded-xl text-sm text-brand-text-secondary text-center">
-                        You will be redirected to <strong className="text-brand-text-primary">{paymentMethod === 'gpay' ? 'Google Pay' : 'Razorpay'}</strong> to complete your transaction securely.
-                      </div>
+                    <div className="flex items-center gap-3 text-sm font-bold text-white">
+                      <CreditCard className="w-5 h-5 text-blue-400" />
+                      Or enter Razorpay test card details
                     </div>
-                  )}
+                    <div className="flex items-center gap-3 text-sm font-bold text-white">
+                      <IndianRupee className="w-5 h-5 text-emerald-400" />
+                      Amount locked to {amountLabel}
+                    </div>
+                    <p className="text-xs text-slate-500 leading-5">
+                      For automatic plan activation, complete the checkout flow from the button below so Adviso AI receives verified payment confirmation.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="pt-6">
-                  <button 
-                    type="submit" 
+                {errorMessage && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-500 leading-6">
+                    {errorMessage}
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
                     disabled={isProcessing}
-                    className="w-full h-14 bg-brand-text-primary text-brand-background font-bold text-base rounded-xl shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-transform flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed group"
+                    className="w-full h-14 bg-blue-500 text-white font-bold text-base rounded-xl shadow-lg shadow-blue-500/20 hover:bg-blue-600 hover:-translate-y-0.5 active:translate-y-0 transition-transform flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed group"
                   >
                     <span className="flex items-center gap-2">
-                      <Lock className="w-4 h-4 group-hover:scale-110 transition-transform" /> Pay {plan.price === 'Custom' ? '' : plan.price}
+                      <Lock className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                      {isProcessing ? "Opening checkout..." : `Open Checkout - ${amountLabel}`}
                     </span>
                   </button>
                 </div>
 
-                <p className="text-center text-xs text-brand-text-secondary/80 pt-4 leading-relaxed max-w-sm mx-auto">
-                  By confirming your subscription, you allow Adviso AI to charge your selected payment method.
+                <p className="text-center text-xs text-slate-500 pt-4 leading-relaxed max-w-sm mx-auto">
+                  Payment authentication happens inside Razorpay checkout. Adviso AI only receives the payment identifiers needed for verification.
                 </p>
               </form>
             </div>
           </motion.div>
-
         </div>
       </div>
     </div>

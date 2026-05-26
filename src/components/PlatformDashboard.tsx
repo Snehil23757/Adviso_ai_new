@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BarChart2,
+  Bell,
   BrainCircuit,
   ChartDonut,
   CheckCircle2,
@@ -10,15 +11,19 @@ import {
   DollarSign,
   Download,
   FileSpreadsheet,
+  FileText,
   HelpCircle,
   Leaf,
   Lightbulb,
+  Lock,
   LogOut,
   MessageSquare,
   Moon,
   PieChart as PieChartIcon,
   Send,
   Shield,
+  Search,
+  Sparkles,
   Sun,
   Table,
   Target,
@@ -55,21 +60,27 @@ import {
 } from "recharts";
 
 import Logo from "./Logo.tsx";
-import { apiUrl } from "../config";
+import { apiFailureMessage, apiUrl, authorizedFetch, readApiJson } from "../config";
+import { auth } from "../firebase.js";
+import { UpgradeRequired } from "../subscriptions/ProtectedFeature";
+import { usePermissions } from "../subscriptions/SubscriptionProvider";
+import { checkoutPlanForId } from "../subscriptions/checkoutPlans";
+import type { DashboardTabId, FeatureKey, PlanDefinition, PlanId } from "../subscriptions/permissions";
+import AccountSettingsPage from "./platform/AccountSettingsPage";
+import FirstRunDashboard from "./platform/FirstRunDashboard";
+import PlatformServicePlaceholder from "./platform/PlatformServicePlaceholder";
+import PlatformSidebar from "./platform/PlatformSidebar";
+import {
+  PLATFORM_NAV_SECTIONS,
+  PLATFORM_SERVICE_ITEMS,
+  getPlatformService,
+  serviceForDashboardTab,
+  type PlatformServiceId,
+  type PlatformServiceItem,
+} from "./platform/navigation";
 
 type ThemeMode = "dark" | "light";
-type TabType =
-  | "Overview"
-  | "Charts"
-  | "AI"
-  | "Chat"
-  | "Ideas"
-  | "Profit"
-  | "Forecast"
-  | "Budget"
-  | "Sustainability"
-  | "Competitor"
-  | "KPI";
+type TabType = DashboardTabId;
 
 type ChartType =
   | "Line"
@@ -92,6 +103,10 @@ interface PlatformDashboardProps {
   onLogout: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  onThemePreferenceChange?: (preference: string) => void;
+  initialTab?: TabType;
+  onTabChange?: (tab: TabType) => void;
+  onUpgradeRequested?: (planId: PlanId) => void;
 }
 
 interface ColumnProfile {
@@ -122,6 +137,80 @@ interface WorkspaceSnapshot {
   columns: string[];
   fileName: string;
   savedAt: number;
+}
+
+interface BackendWorkspace {
+  id: number;
+  name: string;
+  member_role?: string;
+}
+
+interface BackendDataset {
+  id: number;
+  workspace_id: number;
+  file_name: string;
+  storage_bucket?: string;
+  storage_path?: string;
+  size_bytes?: number;
+  status?: string;
+}
+
+interface BackendJob {
+  id: number;
+  workspace_id: number;
+  dataset_id?: number;
+  type?: string;
+  status?: string;
+  progress?: number;
+  error?: string;
+}
+
+interface BackendJobEvent {
+  id?: number;
+  job_id?: number;
+  workspace_id?: number;
+  event_type?: string;
+  message?: string;
+  payload_json?: Record<string, unknown>;
+  created_at?: string;
+}
+
+interface BackendUploadTarget {
+  mode: "supabase_signed_upload" | "record_only" | string;
+  bucket: string;
+  path: string;
+  signed_url?: string;
+  token?: string;
+  configured?: boolean;
+  message?: string;
+}
+
+interface WorkspaceResponse {
+  success: boolean;
+  workspace: BackendWorkspace;
+}
+
+interface WorkspacesResponse {
+  success: boolean;
+  workspaces: BackendWorkspace[];
+}
+
+interface UploadInitResponse {
+  success: boolean;
+  dataset: BackendDataset;
+  upload: BackendUploadTarget;
+}
+
+interface UploadCompleteResponse {
+  success: boolean;
+  dataset: BackendDataset;
+  job: BackendJob;
+}
+
+interface JobResponse {
+  success: boolean;
+  job: BackendJob;
+  events: BackendJobEvent[];
 }
 
 interface MultiValueCandidate {
@@ -166,6 +255,10 @@ const CHART_COLOR = "#2f55d4";
 const CHART_COLOR_2 = "#64748b";
 const CHART_GOOD = "#047857";
 const CHART_WARN = "#b45309";
+const BACKEND_ANALYSIS_ROW_LIMIT = 1500;
+const LOCAL_STORAGE_ROW_LIMIT = 10000;
+const STAGED_ROW_LIMIT = 75000;
+const LOCAL_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;
 const CHARTS: ChartType[] = [
   "Line",
   "Area",
@@ -181,19 +274,35 @@ const CHARTS: ChartType[] = [
   "Treemap",
 ];
 
-const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-  { id: "Overview", label: "Overview", icon: <FileSpreadsheet className="w-4 h-4" /> },
-  { id: "Charts", label: "Visual Analytics", icon: <BarChart2 className="w-4 h-4" /> },
-  { id: "AI", label: "AI Insights", icon: <BrainCircuit className="w-4 h-4" /> },
-  { id: "Chat", label: "Data Chat", icon: <MessageSquare className="w-4 h-4" /> },
-  { id: "Ideas", label: "Ideas", icon: <Lightbulb className="w-4 h-4" /> },
-  { id: "Profit", label: "Profit", icon: <DollarSign className="w-4 h-4" /> },
-  { id: "Forecast", label: "Forecast", icon: <TrendingUp className="w-4 h-4" /> },
-  { id: "Budget", label: "Budget", icon: <PieChartIcon className="w-4 h-4" /> },
-  { id: "Sustainability", label: "ESG", icon: <Leaf className="w-4 h-4" /> },
-  { id: "Competitor", label: "Competitor", icon: <Shield className="w-4 h-4" /> },
-  { id: "KPI", label: "KPI", icon: <Target className="w-4 h-4" /> },
-];
+function displayNameFromEmail(email: string) {
+  const local = email.split("@")[0] || "there";
+  return local
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "there";
+}
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+const INSIGHT_FEATURES: Record<string, FeatureKey> = {
+  overview: "ai.insights",
+  report: "ai.insights",
+  ideas: "ideas.generate",
+  profit: "profit.analyze",
+  forecast: "forecast.run",
+  budget: "budget.plan",
+  sustainability: "esg.analyze",
+  competitor: "competitor.analyze",
+  kpi: "kpi.monitor",
+  chat: "ai.chat",
+};
 
 const TAB_HELP: Record<TabType, { title: string; body: string[] }> = {
   Overview: {
@@ -307,6 +416,56 @@ function formatNumber(value: number | null | undefined, digits = 2) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: digits,
   }).format(value);
+}
+
+function backendId(value: number | string | undefined | null) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function websocketUrl(path: string) {
+  const url = new URL(apiUrl(path), window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
+function signedUploadUrl(upload: BackendUploadTarget) {
+  if (!upload.signed_url) return "";
+  const url = new URL(upload.signed_url, window.location.origin);
+  if (upload.token && !url.searchParams.has("token")) {
+    url.searchParams.set("token", upload.token);
+  }
+  return url.toString();
+}
+
+function progressFromUnknown(value: unknown) {
+  const progress = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : null;
+}
+
+async function uploadFileToSignedTarget(upload: BackendUploadTarget, file: File) {
+  const target = signedUploadUrl(upload);
+  if (!target) return;
+
+  const contentType = file.type || "text/csv";
+  const send = async (method: "POST" | "PUT") =>
+    fetch(target, {
+      method,
+      headers: {
+        "Content-Type": contentType,
+        "x-upsert": "false",
+      },
+      body: file,
+    });
+
+  const first = await send("POST");
+  if (first.ok) return;
+
+  const second = await send("PUT");
+  if (second.ok) return;
+
+  const detail = (await second.text().catch(() => "")) || (await first.text().catch(() => ""));
+  throw new Error(detail || `Supabase upload failed with HTTP ${first.status}.`);
 }
 
 function average(values: number[]) {
@@ -699,6 +858,7 @@ function readWorkspaceSnapshot(userEmail: string): WorkspaceSnapshot | null {
 }
 
 function saveWorkspaceSnapshot(userEmail: string, snapshot: WorkspaceSnapshot) {
+  if (snapshot.data.length > LOCAL_STORAGE_ROW_LIMIT) return;
   try {
     localStorage.setItem(workspaceStorageKey(userEmail), JSON.stringify(snapshot));
   } catch {
@@ -742,9 +902,31 @@ function sanitizeActiveColumns(activeColumns: string[], allColumns: string[]) {
   return cleaned.length ? cleaned : allColumns;
 }
 
-export default function PlatformDashboard({ userEmail, onLogout, theme, onToggleTheme }: PlatformDashboardProps) {
+export default function PlatformDashboard({
+  userEmail,
+  onLogout,
+  theme,
+  onToggleTheme,
+  onThemePreferenceChange,
+  initialTab = "Overview",
+  onTabChange,
+  onUpgradeRequested,
+}: PlatformDashboardProps) {
+  const {
+    canAccessTab,
+    canUseFeature,
+    clearUpgradeMessage,
+    nextUpgradePlan,
+    plans,
+    recommendedPlanForFeature,
+    recommendedPlanForTab,
+    requiredFeatureForTab,
+    subscription,
+    upgradeMessage,
+  } = usePermissions();
   const savedWorkspace = useMemo(() => readWorkspaceSnapshot(userEmail), [userEmail]);
-  const [activeTab, setActiveTab] = useState<TabType>("Overview");
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  const [activeServiceId, setActiveServiceId] = useState<PlatformServiceId>(() => serviceForDashboardTab(initialTab).id);
   const [data, setData] = useState<Record<string, unknown>[]>(() => savedWorkspace?.data || []);
   const [allColumns, setAllColumns] = useState<string[]>(() => savedWorkspace?.allColumns || savedWorkspace?.columns || []);
   const [columns, setColumns] = useState<string[]>(() => savedWorkspace?.columns || []);
@@ -768,6 +950,19 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
   const [loadingInsight, setLoadingInsight] = useState<string | null>(null);
   const [manualRevenue, setManualRevenue] = useState(0);
   const [manualCost, setManualCost] = useState(0);
+  const [showFreePlanPrompt, setShowFreePlanPrompt] = useState(false);
+  const [showPlanPicker, setShowPlanPicker] = useState(false);
+  const [workspaceNotice, setWorkspaceNotice] = useState("");
+  const [backendWorkspaceId, setBackendWorkspaceId] = useState<number | null>(null);
+  const [backendJobId, setBackendJobId] = useState<number | null>(null);
+  const [backendUploadBusy, setBackendUploadBusy] = useState(false);
+  const [backendUploadProgress, setBackendUploadProgress] = useState<number | null>(null);
+  const [backendUploadMessage, setBackendUploadMessage] = useState("");
+  const uploadSocketRef = useRef<WebSocket | null>(null);
+  const jobPollTimerRef = useRef<number | null>(null);
+  const bannerStorageKey = `adviso_top_banner_closed_${userEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}`;
+  const [showTopBanner, setShowTopBanner] = useState(() => localStorage.getItem(bannerStorageKey) !== "true");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   const isDataLoaded = data.length > 0;
   const profiles = useMemo(() => profileColumns(data, columns), [data, columns]);
@@ -791,6 +986,60 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     () => allColumns.filter((column) => !columns.includes(column)),
     [allColumns, columns],
   );
+  const activeService = getPlatformService(activeServiceId);
+  const isAccountSettingsActive = activeServiceId === "account-settings";
+  const activeTabAllowed = canAccessTab(activeTab);
+  const freePlanPromptStorageKey = `adviso_free_plan_prompt_seen_v2_${userEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}`;
+  const selectTab = (tab: TabType) => {
+    setActiveTab(tab);
+    setActiveServiceId(serviceForDashboardTab(tab).id);
+    onTabChange?.(tab);
+  };
+
+  const canAccessService = (item: PlatformServiceItem) => {
+    if (item.tab) return canAccessTab(item.tab);
+    if (item.feature) return canUseFeature(item.feature);
+    return item.status === "live";
+  };
+
+  const recommendedPlanForService = (item: PlatformServiceItem) => {
+    if (item.tab) return recommendedPlanForTab(item.tab).name;
+    if (item.feature) return recommendedPlanForFeature(item.feature).name;
+    return item.requiredPlan ? plans[item.requiredPlan].name : "Enterprise";
+  };
+
+  const selectService = (item: PlatformServiceItem) => {
+    setActiveServiceId(item.id);
+    setProfileMenuOpen(false);
+    if (item.tab) {
+      setActiveTab(item.tab);
+      onTabChange?.(item.tab);
+    }
+  };
+
+  const closeFreePlanPrompt = () => {
+    if (freePlanPromptStorageKey) {
+      localStorage.setItem(freePlanPromptStorageKey, "true");
+    }
+    setShowFreePlanPrompt(false);
+  };
+
+  const openPlanPicker = () => {
+    closeFreePlanPrompt();
+    setShowPlanPicker(true);
+  };
+
+  const requestPaidUpgrade = (planId: PlanId) => {
+    if (planId === "free") return;
+    closeFreePlanPrompt();
+    setShowPlanPicker(false);
+    onUpgradeRequested?.(planId);
+  };
+
+  const closeTopBanner = () => {
+    localStorage.setItem(bannerStorageKey, "true");
+    setShowTopBanner(false);
+  };
 
   useEffect(() => {
     if (!data.length || !allColumns.length || !columns.length) return;
@@ -802,6 +1051,32 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
       savedAt: Date.now(),
     });
   }, [userEmail, data, allColumns, columns, fileName]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+    setActiveServiceId(serviceForDashboardTab(initialTab).id);
+  }, [initialTab]);
+
+  useEffect(() => {
+    setShowTopBanner(localStorage.getItem(bannerStorageKey) !== "true");
+  }, [bannerStorageKey]);
+
+  useEffect(() => {
+    if (subscription.loading || subscription.planId !== "free") {
+      setShowFreePlanPrompt(false);
+      return;
+    }
+    setShowFreePlanPrompt(localStorage.getItem(freePlanPromptStorageKey) !== "true");
+  }, [freePlanPromptStorageKey, subscription.loading, subscription.planId]);
+
+  useEffect(() => {
+    return () => {
+      uploadSocketRef.current?.close();
+      if (jobPollTimerRef.current !== null) {
+        window.clearTimeout(jobPollTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!stagedData) return;
@@ -832,9 +1107,20 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     cols = columns,
   ) => {
     if (!rows.length) return;
+    const requiredFeature = INSIGHT_FEATURES[mode] || "ai.insights";
+    if (!canUseFeature(requiredFeature)) {
+      setInsights((prev) => ({
+        ...prev,
+        [mode]: {
+          answer: `Upgrade required: your current ${subscription.plan.name} plan does not include ${requiredFeature.replace(".", " ")}.`,
+          source: "local",
+        },
+      }));
+      return;
+    }
     setLoadingInsight(mode);
     try {
-      const response = await fetch(apiUrl("/api/dataset/insights"), {
+      const response = await authorizedFetch("/api/dataset/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -842,20 +1128,23 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
           question,
           context,
           columns: cols,
-          rows: rows.slice(0, 1500),
+          rows: rows.slice(0, BACKEND_ANALYSIS_ROW_LIMIT),
         }),
       });
-      if (!response.ok) throw new Error("Insight API failed.");
-      const result = await response.json();
+      const result = await readApiJson<{ answer?: string; source?: InsightResult["source"] }>(response);
+      if (!result.answer) throw new Error("The backend returned an empty insight response.");
       setInsights((prev) => ({
         ...prev,
-        [mode]: { answer: result.answer, source: result.source },
+        [mode]: { answer: result.answer, source: result.source || "local" },
       }));
-    } catch {
+    } catch (error) {
       setInsights((prev) => ({
         ...prev,
         [mode]: {
-          answer: "The backend insight service could not be reached. In local development, run .\\start-dev.ps1. In production, verify VITE_API_URL points to the deployed backend and that the backend allows your Firebase domain in CORS.",
+          answer: apiFailureMessage(
+            error,
+            "The insight service could not be reached. Please retry, or contact support if the issue continues.",
+          ),
           source: "local",
         },
       }));
@@ -864,15 +1153,207 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     }
   };
 
-  const processFile = (file: File) => {
+  const clearBackendWatchers = () => {
+    uploadSocketRef.current?.close();
+    uploadSocketRef.current = null;
+    if (jobPollTimerRef.current !== null) {
+      window.clearTimeout(jobPollTimerRef.current);
+      jobPollTimerRef.current = null;
+    }
+  };
+
+  const ensureBackendWorkspace = async () => {
+    if (backendWorkspaceId) return backendWorkspaceId;
+
+    const listResponse = await authorizedFetch("/api/workspaces");
+    const list = await readApiJson<WorkspacesResponse>(listResponse);
+    let workspace = list.workspaces[0];
+
+    if (!workspace) {
+      const createResponse = await authorizedFetch("/api/workspaces", {
+        method: "POST",
+        body: JSON.stringify({ name: "Personal Workspace" }),
+      });
+      const created = await readApiJson<WorkspaceResponse>(createResponse);
+      workspace = created.workspace;
+    }
+
+    const id = backendId(workspace.id);
+    if (!id) throw new Error("The backend did not return a valid workspace id.");
+    setBackendWorkspaceId(id);
+    return id;
+  };
+
+  const applyBackendJobEvent = (event: BackendJobEvent, expectedJobId: number) => {
+    if (event.job_id && backendId(event.job_id) !== expectedJobId) return;
+
+    const payload = event.payload_json && typeof event.payload_json === "object" ? event.payload_json : {};
+    const progress = progressFromUnknown(payload.progress);
+    if (progress !== null) {
+      setBackendUploadProgress(progress);
+    } else if (event.event_type === "started") {
+      setBackendUploadProgress((current) => Math.max(current || 0, 5));
+    } else if (event.event_type === "completed") {
+      setBackendUploadProgress(100);
+    }
+
+    if (event.message) setBackendUploadMessage(event.message);
+    if (event.event_type === "completed") {
+      setBackendUploadBusy(false);
+      setWorkspaceNotice("Backend profiling is complete. Adviso AI saved metadata, column statistics, and summaries for this dataset.");
+    }
+    if (event.event_type === "failed") {
+      setBackendUploadBusy(false);
+      setWorkspaceNotice(event.message || "Backend CSV processing failed. Check the worker logs and retry the upload.");
+    }
+  };
+
+  const pollBackendJob = (workspaceId: number, jobId: number) => {
+    if (jobPollTimerRef.current !== null) {
+      window.clearTimeout(jobPollTimerRef.current);
+      jobPollTimerRef.current = null;
+    }
+
+    const poll = async () => {
+      try {
+        const response = await authorizedFetch(`/api/workspaces/${workspaceId}/jobs/${jobId}`);
+        const result = await readApiJson<JobResponse>(response);
+        const jobProgress = progressFromUnknown(result.job.progress);
+        const latestEvent = result.events[result.events.length - 1];
+        const status = result.job.status || "queued";
+
+        if (jobProgress !== null) setBackendUploadProgress(jobProgress);
+        setBackendUploadMessage(latestEvent?.message || `Dataset processing is ${status}.`);
+
+        const isTerminal = status === "completed" || status === "failed" || status === "cancelled";
+        if (latestEvent) applyBackendJobEvent(latestEvent, jobId);
+        if (isTerminal) {
+          setBackendUploadBusy(false);
+          uploadSocketRef.current?.close();
+          uploadSocketRef.current = null;
+          jobPollTimerRef.current = null;
+          return;
+        }
+      } catch (error) {
+        setBackendUploadMessage(
+          apiFailureMessage(error, "Upload queued, but job progress could not be refreshed yet."),
+        );
+      }
+
+      jobPollTimerRef.current = window.setTimeout(poll, 2200);
+    };
+
+    jobPollTimerRef.current = window.setTimeout(poll, 1000);
+  };
+
+  const watchBackendJob = async (workspaceId: number, jobId: number) => {
+    pollBackendJob(workspaceId, jobId);
+
+    const token = await auth?.currentUser?.getIdToken();
+    if (!token) return;
+
+    const url = new URL(websocketUrl(`/api/ws/workspaces/${workspaceId}`));
+    url.searchParams.set("token", token);
+
+    const socket = new WebSocket(url.toString());
+    uploadSocketRef.current = socket;
+    socket.onmessage = (message) => {
+      try {
+        const event = JSON.parse(message.data) as BackendJobEvent & { type?: string };
+        if (event.type === "connected") return;
+        applyBackendJobEvent(event, jobId);
+      } catch {
+        setBackendUploadMessage("Received an unreadable processing update from the backend.");
+      }
+    };
+    socket.onerror = () => {
+      setBackendUploadMessage("Live progress connection dropped. Falling back to job polling.");
+    };
+    socket.onclose = () => {
+      if (uploadSocketRef.current === socket) uploadSocketRef.current = null;
+    };
+  };
+
+  const startBackendUploadPipeline = async (file: File) => {
+    clearBackendWatchers();
+    setBackendJobId(null);
+    setBackendUploadBusy(true);
+    setBackendUploadProgress(2);
+    setBackendUploadMessage("Creating workspace upload session...");
+
+    try {
+      const workspaceId = await ensureBackendWorkspace();
+      setBackendUploadProgress(8);
+
+      const initResponse = await authorizedFetch(`/api/workspaces/${workspaceId}/uploads/init`, {
+        method: "POST",
+        body: JSON.stringify({
+          file_name: file.name,
+          size_bytes: file.size,
+          content_type: file.type || "text/csv",
+          checksum_sha256: "",
+        }),
+      });
+      const init = await readApiJson<UploadInitResponse>(initResponse);
+      const datasetId = backendId(init.dataset.id);
+      if (!datasetId) throw new Error("The backend did not return a valid dataset id.");
+
+      setBackendUploadProgress(18);
+      if (!init.upload.signed_url) {
+        const message = init.upload.message || "Supabase signed uploads are not configured for this backend.";
+        setBackendUploadMessage(message);
+        setWorkspaceNotice(`${message} The local preview still works for smaller files, but 200MB CSV processing needs Supabase storage and the worker.`);
+        return;
+      }
+
+      setBackendUploadMessage("Uploading CSV to Supabase Storage...");
+      await uploadFileToSignedTarget(init.upload, file);
+      setBackendUploadProgress(58);
+      setBackendUploadMessage("Upload complete. Queueing metadata extraction...");
+
+      const completeResponse = await authorizedFetch(`/api/workspaces/${workspaceId}/uploads/${datasetId}/complete`, {
+        method: "POST",
+        body: JSON.stringify({
+          storage_path: init.upload.path,
+          checksum_sha256: "",
+          size_bytes: file.size,
+        }),
+      });
+      const complete = await readApiJson<UploadCompleteResponse>(completeResponse);
+      const jobId = backendId(complete.job.id);
+      if (!jobId) throw new Error("The backend did not return a valid processing job id.");
+
+      setBackendJobId(jobId);
+      setBackendUploadProgress(progressFromUnknown(complete.job.progress) ?? 62);
+      setBackendUploadMessage("CSV uploaded. Metadata extraction is queued.");
+      setWorkspaceNotice(`Backend upload started for ${file.name}. Adviso AI will process metadata, statistics, and summaries without loading the full CSV in the browser.`);
+      void watchBackendJob(workspaceId, jobId);
+    } catch (error) {
+      const message = apiFailureMessage(error, "The backend upload pipeline could not be started.");
+      setBackendUploadProgress(null);
+      setBackendUploadMessage(message);
+      setWorkspaceNotice(message);
+    } finally {
+      setBackendUploadBusy(false);
+    }
+  };
+
+  const processLocalCsvPreview = (file: File) => {
     Papa.parse<Record<string, unknown>>(file, {
       header: true,
       dynamicTyping: false,
       skipEmptyLines: true,
+      worker: true,
       complete: (results) => {
         const fields = results.meta.fields || [];
-        const defaultColumns = defaultAnalysisColumns(results.data, fields);
-        const detectedMultiValueColumns = detectMultiValueColumns(results.data, fields);
+        const parsedRows = results.data.slice(0, STAGED_ROW_LIMIT);
+        if (results.data.length > STAGED_ROW_LIMIT) {
+          setWorkspaceNotice(`Large CSV detected. Loaded the first ${formatNumber(STAGED_ROW_LIMIT, 0)} rows locally; backend storage can take over for full-dataset processing later.`);
+        } else {
+          setWorkspaceNotice((current) => current.startsWith("Large CSV detected. Loaded") ? "" : current);
+        }
+        const defaultColumns = defaultAnalysisColumns(parsedRows, fields);
+        const detectedMultiValueColumns = detectMultiValueColumns(parsedRows, fields);
         const initialSplitConfigs = detectedMultiValueColumns.reduce<Record<string, MultiValueSplitConfig>>((acc, candidate) => {
           if (!acc[candidate.column]) {
             acc[candidate.column] = {
@@ -886,13 +1367,39 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
           return acc;
         }, {});
         setFileName(file.name);
-        setStagedData(results.data);
+        setStagedData(parsedRows);
         setStagedColumns(fields);
         setSelectedStagedColumns(defaultColumns);
         setStagedSplitConfigs(initialSplitConfigs);
         setPreviewColumn(null);
       },
+      error: (error) => {
+        setWorkspaceNotice(error.message || "The CSV preview could not be parsed locally.");
+      },
     });
+  };
+
+  const processFile = (file: File) => {
+    void startBackendUploadPipeline(file);
+    setFileName(file.name);
+
+    if (file.size > LOCAL_PREVIEW_MAX_BYTES) {
+      setStagedData(null);
+      setStagedColumns([]);
+      setSelectedStagedColumns([]);
+      setStagedSplitConfigs({});
+      setPreviewColumn(null);
+      setWorkspaceNotice(`Large CSV detected (${formatNumber(file.size / 1024 / 1024, 1)} MB). It is being sent through the backend upload pipeline instead of local browser parsing.`);
+      return;
+    }
+
+    processLocalCsvPreview(file);
+  };
+
+  const handleCsvFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    if (file) processFile(file);
+    event.currentTarget.value = "";
   };
 
   const confirmImport = () => {
@@ -969,24 +1476,44 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     event.preventDefault();
     const question = chatInput.trim();
     if (!question || isChatLoading) return;
-    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
-    setChatInput("");
-    setIsChatLoading(true);
-    try {
-      const response = await fetch(apiUrl("/api/chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, columns, rows: data.slice(0, 1500) }),
-      });
-      if (!response.ok) throw new Error("Chat API failed.");
-      const result = await response.json();
-      setChatMessages((prev) => [...prev, { role: "assistant", content: result.answer, source: result.source }]);
-    } catch {
+    if (!canUseFeature("ai.chat")) {
       setChatMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "The backend chat endpoint is not reachable. In local development, start the Python backend. In production, verify the deployed backend URL and CORS allowed origins.",
+          content: `Upgrade required: your current ${subscription.plan.name} plan does not include AI chat.`,
+          source: "local",
+        },
+      ]);
+      return;
+    }
+    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
+    setChatInput("");
+    setIsChatLoading(true);
+    try {
+      const response = await authorizedFetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, columns, rows: data.slice(0, BACKEND_ANALYSIS_ROW_LIMIT) }),
+      });
+      const result = await readApiJson<{ answer?: string; source?: ChatMessage["source"] }>(response);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: result.answer || "The backend returned an empty chat response.",
+          source: result.source || "local",
+        },
+      ]);
+    } catch (error) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: apiFailureMessage(
+            error,
+            "The backend chat endpoint is not reachable. In local development, start the Python backend. In production, verify the deployed backend URL and CORS allowed origins.",
+          ),
           source: "local",
         },
       ]);
@@ -1012,63 +1539,232 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
   const revenueValue = yProfile?.numeric?.sum || manualRevenue;
   const costValue = profiles.find((profile) => profile.name === secondaryCol)?.numeric?.sum || manualCost;
   const profitValue = revenueValue - costValue;
+  const handleHeaderUpgrade = () => {
+    openPlanPicker();
+  };
+  const displayName = displayNameFromEmail(userEmail);
+  const greeting = greetingForNow();
 
   return (
-    <div className={`adviso-platform ${theme} min-h-screen flex flex-col font-sans`}>
-      <header className="ap-header h-16 border-b px-5 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col">
-            <Logo size="md" className="text-[var(--ap-text)]" />
-            <div className="text-[10px] uppercase tracking-[0.18em] ap-muted pl-[3.25rem] -mt-1">Platform workspace</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="ap-btn-primary cursor-pointer text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition">
-            <UploadCloud className="w-4 h-4" />
-            Import CSV
-            <input type="file" accept=".csv" className="hidden" onChange={(event) => event.target.files?.[0] && processFile(event.target.files[0])} />
-          </label>
-          {isDataLoaded && (
-            <button onClick={exportCsv} className="ap-btn text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2">
-              <Download className="w-4 h-4" />
-              Export
+    <div className={`adviso-platform ${theme} min-h-screen font-sans`}>
+      {showTopBanner && (
+        <div className="ap-trial-banner h-10 px-4 md:px-6 flex items-center justify-center gap-4 text-sm font-bold relative">
+          <span className="inline-flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            {subscription.plan.name === "Free" ? "14 days left in your Adviso AI trial" : `${subscription.plan.name} workspace is active`}
+          </span>
+          <span className="hidden md:inline font-medium opacity-90">Explore all features. Upgrade anytime.</span>
+          {nextUpgradePlan && (
+            <button onClick={handleHeaderUpgrade} className="rounded-lg bg-white px-4 py-1.5 text-xs font-black text-[#145DFF] shadow-sm">
+              View plans
             </button>
           )}
-          <button onClick={onToggleTheme} className="ap-btn text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2">
-            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
-          <div className="hidden md:block text-xs ap-muted px-3 py-2 rounded-lg border" style={{ borderColor: "var(--ap-border)" }}>
-            {userEmail}
-          </div>
-          <button onClick={onLogout} className="ap-btn p-2 rounded-lg" aria-label="Logout">
-            <LogOut className="w-4 h-4" />
+          <button
+            onClick={closeTopBanner}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-white/85 transition hover:bg-white/15 hover:text-white"
+            aria-label="Dismiss workspace banner"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
-      </header>
+      )}
 
-      <div className="flex flex-1 min-h-0">
-        <aside className="ap-sidebar w-64 border-r p-3 overflow-y-auto hidden lg:block">
-          <div className="text-[10px] uppercase tracking-[0.18em] ap-muted px-2 py-2">Modules</div>
-          <div className="space-y-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                  activeTab === tab.id ? "ap-btn-primary" : "ap-btn"
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
+      {upgradeMessage && (
+        <div className="fixed right-4 top-20 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-sm flex items-start gap-3">
+          <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0" style={{ color: "var(--ap-good)" }} />
+          <div className="min-w-0">
+            <div className="text-sm font-black">Subscription updated</div>
+            <div className="text-xs ap-muted mt-1 leading-5">{upgradeMessage}</div>
           </div>
-        </aside>
+          <button onClick={clearUpgradeMessage} className="ap-btn rounded-lg p-1 shrink-0" aria-label="Dismiss subscription update">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
-        <main className="flex-1 min-w-0 overflow-y-auto p-3 xl:p-4">
-          {!isDataLoaded && !stagedData && (
-            <UploadEmptyState
+      {subscription.error && (
+        <div className="fixed right-4 top-20 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-sm">
+          <div className="text-sm font-black">Subscription service unavailable</div>
+          <div className="text-xs ap-muted mt-1 leading-5">
+            Paid access is locked until the backend database session can be verified.
+          </div>
+        </div>
+      )}
+
+      {workspaceNotice && (
+        <div className="fixed left-4 top-20 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-md flex items-start gap-3">
+          <Database className="w-5 h-5 mt-0.5 shrink-0 text-[#145DFF]" />
+          <div className="min-w-0">
+            <div className="text-sm font-black">Large dataset mode</div>
+            <div className="text-xs ap-muted mt-1 leading-5">{workspaceNotice}</div>
+          </div>
+          <button onClick={() => setWorkspaceNotice("")} className="ap-btn rounded-lg p-1 shrink-0" aria-label="Dismiss large dataset notice">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {backendUploadMessage && (
+        <div className="fixed left-4 top-36 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-md flex items-start gap-3">
+          <UploadCloud className="w-5 h-5 mt-0.5 shrink-0 text-[#145DFF]" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-black">Dataset upload pipeline</div>
+            <div className="text-xs ap-muted mt-1 leading-5">{backendUploadMessage}</div>
+            {backendUploadProgress !== null && (
+              <div className="mt-3">
+                <div className="h-2 overflow-hidden rounded-full bg-blue-500/10">
+                  <div
+                    className="h-full rounded-full bg-[#145DFF] transition-all duration-500"
+                    style={{ width: `${backendUploadProgress}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[10px] font-bold ap-muted">
+                  <span>{formatNumber(backendUploadProgress, 0)}% complete</span>
+                  {backendJobId && <span>Job #{backendJobId}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              setBackendUploadMessage("");
+              setBackendUploadProgress(null);
+            }}
+            className="ap-btn rounded-lg p-1 shrink-0"
+            aria-label="Dismiss dataset upload status"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {showFreePlanPrompt && (
+        <FreePlanChoiceModal
+          plans={[plans.go, plans.pro, plans.enterprise]}
+          onContinueFree={closeFreePlanPrompt}
+          onUpgrade={requestPaidUpgrade}
+          title="Choose your intelligence level"
+          description="Your Free workspace is ready. Select a paid plan for more modules, or close this and continue on Free."
+          continueLabel="Continue with Free"
+        />
+      )}
+
+      {showPlanPicker && (
+        <FreePlanChoiceModal
+          plans={[plans.go, plans.pro, plans.enterprise]}
+          onContinueFree={() => setShowPlanPicker(false)}
+          onUpgrade={requestPaidUpgrade}
+          title="Choose your intelligence level"
+          description="Compare GO, PRO, and ENTERPRISE before checkout. Paid access activates only after payment verification."
+          continueLabel="Close"
+        />
+      )}
+
+      <div className={`ap-shell flex ${showTopBanner ? "min-h-[calc(100vh-2.5rem)]" : "min-h-screen"}`}>
+        <PlatformSidebar
+          sections={PLATFORM_NAV_SECTIONS}
+          activeServiceId={activeServiceId}
+          canAccessItem={canAccessService}
+          recommendedPlanForItem={recommendedPlanForService}
+          onSelect={selectService}
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="ap-header sticky top-0 z-50 h-16 border-b px-4 md:px-6 flex items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="lg:hidden">
+                <Logo size="sm" className="text-[var(--ap-text)]" />
+              </div>
+              <div className="ap-top-search hidden w-full max-w-2xl items-center gap-3 rounded-xl border px-4 py-2.5 md:flex">
+                <Search className="h-4 w-4 ap-muted" />
+                <span className="truncate text-sm ap-muted">Search datasets, reports, KPIs, or ask a question...</span>
+                <span className="ml-auto text-xs ap-muted">Ctrl K</span>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <label className={`ap-btn-primary cursor-pointer text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition ${backendUploadBusy ? "opacity-75" : ""}`}>
+                <UploadCloud className="w-4 h-4" />
+                {backendUploadBusy ? "Uploading..." : "Import CSV"}
+                <input type="file" accept=".csv" className="hidden" disabled={backendUploadBusy} onChange={handleCsvFileInput} />
+              </label>
+              {isDataLoaded && canUseFeature("export.csv") && (
+                <button onClick={exportCsv} className="ap-btn text-xs font-semibold px-3 py-2.5 rounded-xl flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+              )}
+              <button onClick={onToggleTheme} className="ap-icon-btn" aria-label="Toggle theme">
+                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+              <button className="ap-icon-btn relative" aria-label="Notifications">
+                <Bell className="w-4 h-4" />
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
+              </button>
+              <div className="relative hidden md:block">
+                <button
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                  className="flex items-center gap-3 rounded-xl border bg-white px-2.5 py-1.5 transition hover:border-blue-300"
+                  style={{ borderColor: "var(--ap-border)" }}
+                >
+                  <div className="grid h-8 w-8 place-items-center rounded-full bg-[#145DFF] text-xs font-black text-white">
+                    {displayName.charAt(0)}
+                  </div>
+                  <div className="hidden text-left xl:block">
+                    <div className="text-xs font-black">{displayName}</div>
+                    <div className="text-[10px] ap-muted">{subscription.plan.badge} plan</div>
+                  </div>
+                </button>
+                {profileMenuOpen && (
+                  <div className="ap-card absolute right-0 top-12 z-[80] w-72 rounded-2xl border p-3 shadow-2xl">
+                    <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: "var(--ap-border)" }}>
+                      <div className="grid h-10 w-10 place-items-center rounded-full bg-[#145DFF] text-sm font-black text-white">
+                        {displayName.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-black">{displayName}</div>
+                        <div className="truncate text-xs ap-muted">{userEmail}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => selectService(getPlatformService("account-settings"))}
+                      className="mt-3 w-full rounded-xl px-3 py-2.5 text-left text-sm font-black transition hover:bg-blue-500/10"
+                    >
+                      Account settings
+                      <span className="mt-1 block text-xs font-medium ap-muted">Profile, plan, billing, security</span>
+                    </button>
+                    <button
+                      onClick={handleHeaderUpgrade}
+                      className="mt-1 w-full rounded-xl px-3 py-2.5 text-left text-sm font-black transition hover:bg-blue-500/10"
+                    >
+                      View plans
+                      <span className="mt-1 block text-xs font-medium ap-muted">{subscription.plan.name} plan is active</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button onClick={onLogout} className="ap-icon-btn" aria-label="Logout">
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </header>
+
+        <main className="ap-dashboard-main flex-1 min-w-0 overflow-y-auto p-4 xl:p-6">
+          {isAccountSettingsActive && !stagedData && (
+            <AccountSettingsPage
+              fallbackEmail={userEmail}
+              onUpgrade={openPlanPicker}
+              currentTheme={theme}
+              onThemePreferenceChange={onThemePreferenceChange}
+            />
+          )}
+
+          {!isAccountSettingsActive && !isDataLoaded && !stagedData && (
+            <FirstRunDashboard
+              displayName={displayName}
+              greeting={greeting}
+              subscription={subscription}
+              nextUpgradePlan={nextUpgradePlan}
+              onViewPlans={handleHeaderUpgrade}
               isDragging={isDragging}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -1088,16 +1784,70 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
             />
           )}
 
-          {isDataLoaded && (
-            <div className="space-y-4">
+          {!isAccountSettingsActive && isDataLoaded && (
+            <div className="space-y-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#145DFF]" style={{ borderColor: "var(--ap-border)" }}>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Live workspace
+                  </div>
+                  <h1 className="mt-3 text-3xl font-black tracking-tight text-[var(--ap-text)]">
+                    {greeting}, {displayName}
+                  </h1>
+                  <p className="mt-1 text-sm ap-muted">
+                    {fileName || "CSV workspace"} | {formatNumber(data.length, 0)} rows | {formatNumber(columns.length, 0)} active columns
+                  </p>
+                </div>
+                <button onClick={() => requestInsight("overview", "", { fileName, ignoredColumns })} className="ap-btn rounded-xl px-4 py-2.5 text-xs font-black inline-flex items-center gap-2 self-start">
+                  <Compass className="h-4 w-4" />
+                  Refresh intelligence
+                </button>
+              </div>
               <nav className="lg:hidden flex gap-2 overflow-x-auto pb-1">
-                {tabs.map((tab) => (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`shrink-0 px-3 py-2 rounded-lg text-xs ${activeTab === tab.id ? "ap-btn-primary" : "ap-btn"}`}>
-                    {tab.label}
-                  </button>
-                ))}
+                {PLATFORM_SERVICE_ITEMS.map((item) => {
+                  const locked = !canAccessService(item);
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => selectService(item)}
+                      className={`shrink-0 px-3 py-2 rounded-lg text-xs inline-flex items-center gap-2 ${activeServiceId === item.id ? "ap-btn-primary" : "ap-btn"} ${locked && activeServiceId !== item.id ? "opacity-65" : ""}`}
+                    >
+                      {item.label}
+                      {locked && <Lock className="w-3 h-3" />}
+                    </button>
+                  );
+                })}
               </nav>
+              <div className="xl:hidden ap-card border rounded-xl p-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.14em] ap-muted">Current subscription</div>
+                  <div className="text-sm font-black">{subscription.plan.name} plan</div>
+                </div>
+                {nextUpgradePlan && (
+                  <button onClick={handleHeaderUpgrade} className="ap-btn-primary rounded-lg px-3 py-2 text-xs font-black">
+                    View plans
+                  </button>
+                )}
+              </div>
 
+              {activeService && !activeService.tab ? (
+                <PlatformServicePlaceholder
+                  service={activeService}
+                  locked={!canAccessService(activeService)}
+                  currentPlanName={subscription.plan.name}
+                  recommendedPlanName={recommendedPlanForService(activeService)}
+                  onUpgrade={openPlanPicker}
+                />
+              ) : !activeTabAllowed ? (
+                <UpgradeRequired
+                  title="Plan access required"
+                  description={`The ${activeTab} workspace is not available on the ${subscription.plan.name} plan.`}
+                  requiredLabel={requiredFeatureForTab(activeTab)}
+                  onUpgradeRequested={() => openPlanPicker()}
+                />
+              ) : (
+                <>
               {activeTab === "Overview" && (
                 <OverviewTab
                   profiles={profiles}
@@ -1284,9 +2034,12 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
                   onRun={() => requestInsight("kpi", "Generate KPI commentary and monitoring recommendations from the selected numeric field.", { selectedColumn: forecastCol })}
                 />
               )}
+                </>
+              )}
             </div>
           )}
         </main>
+      </div>
       </div>
 
       {stagedData && (
@@ -1314,43 +2067,6 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
           setSplitConfigs={setStagedSplitConfigs}
         />
       )}
-    </div>
-  );
-}
-
-function UploadEmptyState({
-  isDragging,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onFile,
-}: {
-  isDragging: boolean;
-  onDragOver: React.DragEventHandler<HTMLDivElement>;
-  onDragLeave: React.DragEventHandler<HTMLDivElement>;
-  onDrop: React.DragEventHandler<HTMLDivElement>;
-  onFile: (file: File) => void;
-}) {
-  return (
-    <div className="min-h-[calc(100vh-7rem)] flex items-center justify-center">
-      <div
-        className={`ap-card border rounded-2xl w-full max-w-5xl p-10 text-center transition ${isDragging ? "ring-4" : ""}`}
-        style={{ boxShadow: "0 24px 70px rgba(15,23,42,.08)" }}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        <Database className="w-12 h-12 mx-auto ap-accent mb-4" />
-        <h1 className="text-3xl font-black tracking-tight mb-2">Import a CSV to start analysis</h1>
-        <p className="ap-muted max-w-2xl mx-auto text-sm leading-relaxed">
-          Upload a CSV and Adviso AI will profile columns, create BI charts, forecast numeric fields, and send dataset summaries to the backend insight engine.
-        </p>
-        <label className="ap-btn-primary inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold mt-7 cursor-pointer">
-          <UploadCloud className="w-4 h-4" />
-          Select CSV file
-          <input type="file" accept=".csv" className="hidden" onChange={(event) => event.target.files?.[0] && onFile(event.target.files[0])} />
-        </label>
-      </div>
     </div>
   );
 }
@@ -1401,6 +2117,167 @@ function MetricCard({ label, value, tone, small }: { label: string; value: strin
         title={value}
       >
         {value}
+      </div>
+    </div>
+  );
+}
+
+function FreePlanChoiceModal({
+  plans,
+  onContinueFree,
+  onUpgrade,
+  title,
+  description,
+  continueLabel,
+}: {
+  plans: PlanDefinition[];
+  onContinueFree: () => void;
+  onUpgrade: (planId: PlanId) => void;
+  title: string;
+  description: string;
+  continueLabel: string;
+}) {
+  const planDetails: Partial<Record<PlanId, { bestFor: string; features: string[] }>> = {
+    go: {
+      bestFor: "For Individuals & Small Businesses",
+      features: [
+        "Basic AI recommendations",
+        "Simple business insights",
+        "Monthly growth suggestions",
+        "Limited AI requests",
+        "Single-user access",
+      ],
+    },
+    pro: {
+      bestFor: "For Startups & Growing Businesses",
+      features: [
+        "Advanced AI business analysis",
+        "Smart forecasting",
+        "Competitor tracking",
+        "Profit optimization",
+        "Priority AI processing",
+      ],
+    },
+    enterprise: {
+      bestFor: "For Companies & Teams",
+      features: [
+        "Unlimited AI analysis",
+        "Advanced KPI intelligence",
+        "Team collaboration",
+        "Real-time forecasting",
+        "Enterprise security",
+      ],
+    },
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] overflow-y-auto p-4">
+      <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={onContinueFree} />
+      <div className="relative mx-auto my-8 w-full max-w-7xl rounded-3xl border border-blue-400/20 bg-[#101827] p-5 shadow-2xl shadow-black/40 md:p-8">
+        <div className="absolute inset-0 subtle-grid opacity-10 pointer-events-none" />
+        <button className="absolute right-5 top-5 z-10 ap-btn rounded-lg p-2 shrink-0" onClick={onContinueFree} aria-label={continueLabel}>
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="relative z-10 mx-auto max-w-3xl text-center">
+          <div className="text-xs font-mono font-bold uppercase tracking-widest text-brand-primary bg-brand-primary/10 px-3 py-1 rounded-full border border-brand-primary/20 inline-flex">
+            Adviso AI Pricing Plans
+          </div>
+          <h2 className="mt-4 text-3xl font-black tracking-tight text-white sm:text-4xl">{title}</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-400">{description}</p>
+          <div className="mt-6 inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-950/70 p-1 shadow-inner">
+            <span className="rounded-lg px-4 py-2 text-xs font-bold text-slate-400">Monthly Billing</span>
+            <span className="rounded-lg bg-brand-primary px-4 py-2 text-xs font-bold text-white">
+              Annual Billing <span className="ml-2 text-[10px] text-emerald-300">Save 20%</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="relative z-10 mx-auto mt-10 grid max-w-6xl grid-cols-1 gap-5 lg:grid-cols-3">
+          {plans.map((plan) => {
+            const checkoutPlan = checkoutPlanForId(plan.id);
+            const details = planDetails[plan.id];
+            const priceLabel = checkoutPlan?.price.replace(/^INR\s*/i, "₹") || plan.monthlyPriceLabel;
+            const isPopular = plan.id === "pro";
+            return (
+              <div
+                key={plan.id}
+                className={`relative flex min-h-[560px] flex-col justify-between rounded-2xl border bg-[#0d1424] p-6 text-left shadow-xl transition ${
+                  isPopular ? "border-brand-primary ring-1 ring-brand-primary/40 shadow-brand-primary/10 lg:scale-[1.04]" : "border-blue-400/20 hover:border-blue-400/45"
+                }`}
+              >
+                {isPopular && (
+                  <div className="absolute right-0 top-0 rounded-bl-xl rounded-tr-2xl bg-brand-primary px-4 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-white">
+                    Most Popular
+                  </div>
+                )}
+
+                <div className="space-y-6">
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="text-2xl font-black tracking-tight text-white">{plan.badge}</span>
+                      {plan.id === "enterprise" && (
+                        <span className="rounded border border-brand-primary/25 bg-brand-primary/10 px-1.5 text-[9px] font-mono uppercase tracking-widest text-brand-primary">
+                          Enterprise Matrix
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold tracking-wide text-brand-primary">{details?.bestFor}</p>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-400">{plan.description}</p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-4xl font-extrabold text-white">{priceLabel}</span>
+                      <span className="text-xs font-mono text-slate-400">/ mo</span>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase text-slate-500">Billed annually after checkout</span>
+                  </div>
+
+                  <div className="space-y-1.5 rounded-xl border border-slate-700 bg-slate-800/80 p-3">
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-slate-400">Included interface tabs</span>
+                    <div className="flex flex-wrap gap-1">
+                      {plan.tabs.map((tab) => (
+                        <span key={tab} className="rounded border border-slate-600 bg-white/5 px-2 py-0.5 text-[10px] font-mono text-white">
+                          {tab}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 border-t border-slate-700 pt-5">
+                    <span className="block text-[9px] font-mono uppercase tracking-widest text-slate-400">Core specified capabilities</span>
+                    {(details?.features || []).map((feature) => (
+                      <div key={feature} className="flex items-start gap-2.5 text-xs">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
+                        <span className="leading-normal text-white/95">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  className={`mt-8 flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-xs font-bold transition ${
+                    isPopular ? "bg-brand-primary text-white hover:bg-brand-primary/90" : "border border-slate-700 bg-slate-800 text-white hover:bg-slate-700"
+                  }`}
+                  onClick={() => onUpgrade(plan.id)}
+                >
+                  Activate {plan.badge} Profile
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="relative z-10 mt-6 flex flex-col gap-3 border-t border-slate-700 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-slate-400">
+            Paid access activates only after verified payment. You can close this and continue with the Free workspace.
+          </p>
+          <button className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-xs font-black text-white transition hover:bg-slate-700" onClick={onContinueFree}>
+            {continueLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -2,5 +2,5 @@
   "name": "Adviso AI",
   "description": "An explainable AI-powered business decision intelligence and strategic recommendation platform for startups, MSMEs, founders, and business analysts.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

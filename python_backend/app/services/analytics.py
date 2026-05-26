@@ -8,6 +8,7 @@ from openai import OpenAI
 from sklearn.linear_model import LinearRegression
 
 from app.config import get_settings
+from app.services.redis_service import get_redis_service
 
 
 NUMBER_RE = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
@@ -271,15 +272,33 @@ def _ai_dataset_insight(mode: str, profile: dict, question: str = "", context: d
 
 
 def dataset_insights(mode: str, rows: list[dict], columns: list[str] | None = None, question: str = "", context: dict | None = None) -> dict:
+    settings = get_settings()
+    cache_payload = {
+        "mode": mode,
+        "rows": rows,
+        "columns": columns or [],
+        "question": question,
+        "context": context or {},
+        "model": settings.ai_model,
+    }
+    cache_key = get_redis_service().cache_key("ai:dataset_insights", cache_payload)
+    cached = get_redis_service().get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
     profile = profile_dataset(rows, columns)
     ai_answer = _ai_dataset_insight(mode, profile, question, context)
     if ai_answer and not ai_answer.startswith("OpenAI request failed"):
-        return {"answer": ai_answer, "source": "ai", "profile": profile}
+        result = {"answer": ai_answer, "source": "ai", "profile": profile}
+        get_redis_service().set_json(cache_key, result, settings.ai_cache_ttl_seconds)
+        return result
 
     local = _local_insight_text(mode, profile, question, context)
     if ai_answer:
         local = f"{local}\n\n{ai_answer}"
-    return {"answer": local, "source": "local", "profile": profile}
+    result = {"answer": local, "source": "local", "profile": profile}
+    get_redis_service().set_json(cache_key, result, min(settings.ai_cache_ttl_seconds, 300))
+    return result
 
 
 def profit_summary(revenue: float, cost: float) -> dict:
