@@ -69,7 +69,7 @@ main > section:not(:first-child) {
 .adviso-laptop-stage {
   background:
     radial-gradient(circle at 60% 18%, rgba(20, 93, 255, 0.16), transparent 32%),
-    radial-gradient(circle at 78% 70%, rgba(32, 215, 255, 0.12), transparent 36%),
+    radial-gradient(circle at 78% 70%, rgba(11, 63, 204, 0.1), transparent 36%),
     linear-gradient(180deg, #f7fbff 0%, #eaf3ff 52%, #f8fbff 100%);
   color: #0f172a;
 }
@@ -77,7 +77,7 @@ main > section:not(:first-child) {
 html.dark .adviso-laptop-stage {
   background:
     radial-gradient(circle at 50% 18%, rgba(20, 93, 255, 0.18), transparent 32%),
-    radial-gradient(circle at 72% 62%, rgba(32, 215, 255, 0.1), transparent 34%),
+    radial-gradient(circle at 72% 62%, rgba(91, 127, 255, 0.1), transparent 34%),
     linear-gradient(180deg, #02040a 0%, #041127 52%, #02040a 100%);
   color: #f8fafc;
 }
@@ -112,7 +112,7 @@ html.dark .adviso-laptop-base {
   background: linear-gradient(180deg, #9ba3b0 0%, #566273 48%, #202837 100%);
   box-shadow:
     0 50px 80px rgba(0, 0, 0, 0.9),
-    0 0 50px rgba(32, 215, 255, 0.12);
+    0 0 50px rgba(20, 93, 255, 0.14);
 }
 
 .adviso-laptop-base > div {
@@ -139,13 +139,21 @@ html.dark .adviso-laptop-screen {
     inset 0 0 80px rgba(20, 93, 255, 0.08);
 }
 
+.adviso-laptop-engraving {
+  color: rgba(15, 23, 42, 0.46);
+}
+
+html.dark .adviso-laptop-engraving {
+  color: rgba(255, 255, 255, 0.2);
+}
+
 .adviso-laptop-copy-eyebrow {
-  color: #0b5bd7;
+  color: #145dff;
   text-shadow: 0 14px 28px rgba(255, 255, 255, 0.72);
 }
 
 html.dark .adviso-laptop-copy-eyebrow {
-  color: rgba(103, 232, 249, 0.95);
+  color: #8aa4ff;
   text-shadow: 0 14px 34px rgba(0, 0, 0, 0.85);
 }
 

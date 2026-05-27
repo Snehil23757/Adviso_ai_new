@@ -113,7 +113,7 @@ export default function CinematicProfilesScene() {
             imageUrl={aiNetworkOrbit}
             overlayColor="from-[#02040a] via-[#02040a]/76 to-[#02040a]"
             scale={s4}
-            ambientColor="bg-cyan-500/10"
+            ambientColor="bg-blue-500/10"
           />
           <ProfileContent
             headline="Built For Teams That Need Clear Answers."
@@ -188,7 +188,7 @@ function ProfileContent({
             {labels.map((label, idx) => (
               <div key={label} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1">
                 {idx === 0 ? (
-                  <Zap className="h-3 w-3 animate-pulse text-[#20D7FF]" />
+                  <Zap className="h-3 w-3 animate-pulse text-[#7D95FF]" />
                 ) : (
                   <div className="h-1.5 w-1.5 rounded-full bg-slate-500" />
                 )}
@@ -208,7 +208,7 @@ function ProfileContent({
           <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
             {insights.map((insight) => (
               <div key={insight} className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#20D7FF]" />
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#7D95FF]" />
                 <span className="text-sm leading-tight text-slate-300">{insight}</span>
               </div>
             ))}
@@ -216,8 +216,8 @@ function ProfileContent({
         </motion.div>
 
         <motion.div style={{ y }} className="relative flex h-full min-h-[420px] items-center justify-center lg:col-span-6">
-          <div className="group relative flex h-[78%] w-full items-center justify-center overflow-hidden rounded-[2rem] border border-[#145DFF]/24 bg-[#020817]/70 p-2 shadow-[0_40px_130px_rgba(0,0,0,0.62),0_0_90px_rgba(32,215,255,0.14)] backdrop-blur-sm">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_55%_25%,rgba(32,215,255,0.12),transparent_42%),linear-gradient(135deg,rgba(20,93,255,0.1),transparent_58%)]" />
+          <div className="group relative flex h-[78%] w-full items-center justify-center overflow-hidden rounded-[2rem] border border-[#145DFF]/24 bg-[#020817]/70 p-2 shadow-[0_40px_130px_rgba(0,0,0,0.62),0_0_90px_rgba(20,93,255,0.14)] backdrop-blur-sm">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_55%_25%,rgba(20,93,255,0.12),transparent_42%),linear-gradient(135deg,rgba(11,63,204,0.1),transparent_58%)]" />
             <motion.img
               src={mediaImage}
               alt={mediaAlt}

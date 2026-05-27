@@ -115,7 +115,7 @@ export default function LaptopScene() {
             className="adviso-laptop-copy pointer-events-none absolute left-6 top-[13%] z-40 w-[min(19rem,calc(100vw-3rem))] text-left sm:left-10 md:top-[18%] lg:left-[4vw] lg:top-[24%] xl:left-[6vw] 2xl:left-[8vw]"
           >
             <div className="adviso-laptop-copy-eyebrow mb-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#20D7FF] shadow-[0_0_18px_rgba(32,215,255,0.9)]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#145DFF] shadow-[0_0_18px_rgba(20,93,255,0.72)]" />
               {LAPTOP_STORY_COPY[activeScene].eyebrow}
             </div>
             <h2 className="adviso-laptop-copy-title max-w-[16rem] text-3xl font-black leading-[1.02] tracking-tight sm:text-4xl lg:text-[2.9rem]">
@@ -151,7 +151,7 @@ export default function LaptopScene() {
 
              {/* Logo Engraving Margin - Fades out */}
              <motion.div style={{ opacity: frameOpacity }} className="absolute top-[96%] left-0 w-full h-[3%] min-h-[10px] flex items-end justify-center pb-[0.5%] z-20 pointer-events-none">
-                <span className="text-white/20 text-[4px] sm:text-[6px] md:text-[8px] font-sans font-bold tracking-[0.25em]">MACBOOK PRO</span>
+                <span className="adviso-laptop-engraving text-[4px] sm:text-[6px] md:text-[8px] font-sans font-bold tracking-[0.25em]">MACBOOK PRO</span>
              </motion.div>
 
              {/* The Laptop Base Unit (protruding downwards) - Fades out */}
