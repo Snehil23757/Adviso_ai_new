@@ -1,6 +1,7 @@
 import json
 import math
 import re
+import time
 from statistics import mean, median, pstdev
 
 import numpy as np
@@ -8,10 +9,21 @@ from openai import OpenAI
 from sklearn.linear_model import LinearRegression
 
 from app.config import get_settings
+from app.services.ai_context import (
+    build_ai_context,
+    build_prompt_hash,
+    get_cached_ai_response,
+    store_ai_response_cache,
+)
 from app.services.redis_service import get_redis_service
 
 
 NUMBER_RE = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
+
+
+def _estimate_tokens(*values: object) -> int:
+    text = json.dumps(values, default=str, separators=(",", ":"))
+    return max(1, len(text) // 4)
 
 
 def parse_number(value) -> float | None:
@@ -250,54 +262,122 @@ def _ai_dataset_insight(mode: str, profile: dict, question: str = "", context: d
         ),
     }
 
-    try:
-        client = OpenAI(api_key=settings.openai_api_key)
-        response = client.chat.completions.create(
-            model=settings.ai_model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": json.dumps(user)},
-            ],
-            temperature=0.2,
-        )
-        return response.choices[0].message.content or None
-    except Exception as exc:
-        error_text = str(exc)
-        if "invalid_api_key" in error_text or "Incorrect API key" in error_text or "401" in error_text:
-            return (
-                "OpenAI request failed: the request reached the API, but the key was rejected with 401 invalid_api_key. "
-                "I used local backend analysis instead. Replace OPENAI_API_KEY in python_backend/.env with a valid active key, then restart the backend."
+    client = OpenAI(api_key=settings.openai_api_key)
+    last_error = ""
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=settings.ai_model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": json.dumps(user)},
+                ],
+                temperature=0.2,
             )
-        return "OpenAI request failed, so I used local backend analysis instead. Check backend logs and API account status."
+            return response.choices[0].message.content or None
+        except Exception as exc:
+            last_error = str(exc)
+            if "invalid_api_key" in last_error or "Incorrect API key" in last_error or "401" in last_error:
+                return (
+                    "OpenAI request failed: the request reached the API, but the key was rejected with 401 invalid_api_key. "
+                    "I used local backend analysis instead. Replace OPENAI_API_KEY in python_backend/.env with a valid active key, then restart the backend."
+                )
+            if attempt < 2:
+                time.sleep(0.6 * (attempt + 1))
+    return f"OpenAI request failed after retries, so I used local backend analysis instead. Last error: {last_error[:180]}"
 
 
-def dataset_insights(mode: str, rows: list[dict], columns: list[str] | None = None, question: str = "", context: dict | None = None) -> dict:
+def dataset_insights(
+    mode: str,
+    rows: list[dict],
+    columns: list[str] | None = None,
+    question: str = "",
+    context: dict | None = None,
+    workspace_id: int | None = None,
+    dataset_id: int | None = None,
+) -> dict:
     settings = get_settings()
+    workspace_context = build_ai_context(
+        workspace_id=workspace_id,
+        dataset_id=dataset_id,
+        rows=rows,
+        columns=columns or [],
+        extra_context=context or {},
+    )
+    context_rows = workspace_context.get("sampleRows") if workspace_id and dataset_id else rows
+    context_columns = workspace_context.get("columns") if workspace_id and dataset_id else (columns or [])
+    effective_rows = context_rows if isinstance(context_rows, list) else rows
+    effective_columns = context_columns if isinstance(context_columns, list) else (columns or [])
+    enriched_context = {
+        **(context or {}),
+        "workspaceContext": workspace_context if workspace_id else {},
+    }
+    prompt_hash = build_prompt_hash(
+        workspace_id=workspace_id,
+        dataset_id=dataset_id,
+        mode=mode,
+        question=question,
+        columns=effective_columns,
+        context=enriched_context,
+        model=settings.ai_model,
+    )
+    cached_db = get_cached_ai_response(workspace_id, prompt_hash)
+    if isinstance(cached_db, dict) and isinstance(cached_db.get("response_json"), dict):
+        return cached_db["response_json"]
+
     cache_payload = {
         "mode": mode,
-        "rows": rows,
-        "columns": columns or [],
+        "rows": effective_rows,
+        "columns": effective_columns,
         "question": question,
-        "context": context or {},
+        "context": enriched_context,
         "model": settings.ai_model,
+        "workspace_id": workspace_id,
+        "dataset_id": dataset_id,
     }
     cache_key = get_redis_service().cache_key("ai:dataset_insights", cache_payload)
     cached = get_redis_service().get_json(cache_key)
     if isinstance(cached, dict):
         return cached
 
-    profile = profile_dataset(rows, columns)
-    ai_answer = _ai_dataset_insight(mode, profile, question, context)
+    profile = profile_dataset(effective_rows, effective_columns)
+    ai_answer = _ai_dataset_insight(mode, profile, question, enriched_context)
     if ai_answer and not ai_answer.startswith("OpenAI request failed"):
-        result = {"answer": ai_answer, "source": "ai", "profile": profile}
+        result = {
+            "answer": ai_answer,
+            "source": "ai",
+            "profile": profile,
+            "tokens_estimated": _estimate_tokens(cache_payload, ai_answer),
+        }
         get_redis_service().set_json(cache_key, result, settings.ai_cache_ttl_seconds)
+        store_ai_response_cache(
+            workspace_id=workspace_id,
+            dataset_id=dataset_id,
+            prompt_hash=prompt_hash,
+            prompt=cache_payload,
+            response=result,
+            source="ai",
+        )
         return result
 
-    local = _local_insight_text(mode, profile, question, context)
+    local = _local_insight_text(mode, profile, question, enriched_context)
     if ai_answer:
         local = f"{local}\n\n{ai_answer}"
-    result = {"answer": local, "source": "local", "profile": profile}
+    result = {
+        "answer": local,
+        "source": "local",
+        "profile": profile,
+        "tokens_estimated": _estimate_tokens(cache_payload, local),
+    }
     get_redis_service().set_json(cache_key, result, min(settings.ai_cache_ttl_seconds, 300))
+    store_ai_response_cache(
+        workspace_id=workspace_id,
+        dataset_id=dataset_id,
+        prompt_hash=prompt_hash,
+        prompt=cache_payload,
+        response=result,
+        source="local",
+    )
     return result
 
 

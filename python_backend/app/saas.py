@@ -2,9 +2,11 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request
+from psycopg.types.json import Json
 
 from app.auth import get_firebase_claims
 from app.database import get_db, normalize_record, normalize_row, now_utc
+from app.services.email_validation import validate_registration_email
 
 
 FEATURE_TO_TABS: dict[str, list[str]] = {
@@ -66,23 +68,45 @@ def upsert_user_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
     full_name = claims.get("name") or ""
     picture = claims.get("picture") or ""
     provider = provider_from_claims(claims)
+    email_verified = bool(claims.get("email_verified"))
+    validation = validate_registration_email(email)
 
     with get_db() as conn:
+        existing = conn.execute("SELECT id, email FROM users WHERE firebase_uid = %s", (firebase_uid,)).fetchone()
+        is_new_user = existing is None
+        if is_new_user and not validation.get("valid"):
+            raise HTTPException(status_code=400, detail=validation.get("message") or "Please use a valid permanent email address.")
+        if existing and email and str(existing.get("email") or "").lower() != str(email).lower() and not validation.get("valid"):
+            raise HTTPException(status_code=400, detail=validation.get("message") or "Please use a valid permanent email address.")
+
+        profile_metadata = {
+            "email_verified": email_verified,
+            "email_validation": validation,
+        }
+        if is_new_user:
+            profile_metadata["onboarding_completed"] = False
+            profile_metadata["trial_started_at"] = now_utc().isoformat()
         row = conn.execute(
             """
-            INSERT INTO users (firebase_uid, email, full_name, profile_picture, auth_provider, plan_id, login_count, last_login, updated_at)
-            VALUES (%s, %s, %s, %s, %s, 'free', 1, NOW(), NOW())
+            INSERT INTO users (
+                firebase_uid, email, full_name, profile_picture, auth_provider,
+                plan_id, email_verified, onboarding_completed, trial_started_at,
+                profile_metadata_json, login_count, last_login, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, 'free', %s, FALSE, NOW(), %s, 1, NOW(), NOW())
             ON CONFLICT (firebase_uid) DO UPDATE SET
                 email = EXCLUDED.email,
                 full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), users.full_name),
                 profile_picture = COALESCE(NULLIF(EXCLUDED.profile_picture, ''), users.profile_picture),
                 auth_provider = EXCLUDED.auth_provider,
+                email_verified = EXCLUDED.email_verified,
+                profile_metadata_json = users.profile_metadata_json || EXCLUDED.profile_metadata_json,
                 login_count = users.login_count + 1,
                 last_login = NOW(),
                 updated_at = NOW()
             RETURNING *
             """,
-            (firebase_uid, email, full_name, picture, provider),
+            (firebase_uid, validation.get("email") or email, full_name, picture, provider, email_verified, Json(profile_metadata)),
         ).fetchone()
 
         conn.execute(
@@ -96,10 +120,15 @@ def upsert_user_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
             (row["id"], row["id"]),
         )
         conn.commit()
-        return normalize_record(row) or {}
+        user = normalize_record(row) or {}
+
+    return user
 
 
-def get_current_user(claims: dict[str, Any] = Depends(get_firebase_claims)) -> dict[str, Any]:
+def get_current_user(request: Request, claims: dict[str, Any] = Depends(get_firebase_claims)) -> dict[str, Any]:
+    cached = getattr(request.state, "current_user", None)
+    if isinstance(cached, dict):
+        return cached
     try:
         return upsert_user_from_claims(claims)
     except RuntimeError as exc:
@@ -423,11 +452,112 @@ def create_pending_payment(user_id: int, plan_id: str, order_id: str, amount: in
         conn.commit()
 
 
+def record_payment_webhook_event(
+    *,
+    event_id: str,
+    event_name: str,
+    payload: dict[str, Any],
+    razorpay_order_id: str = "",
+    razorpay_payment_id: str = "",
+) -> tuple[dict[str, Any], bool]:
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            INSERT INTO payment_webhook_events (
+                event_id, event_name, razorpay_order_id, razorpay_payment_id, payload_json
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (event_id) DO NOTHING
+            RETURNING *
+            """,
+            (event_id, event_name, razorpay_order_id, razorpay_payment_id, Json(payload)),
+        ).fetchone()
+        if row:
+            conn.commit()
+            return normalize_record(row) or {}, True
+
+        existing = conn.execute(
+            "SELECT * FROM payment_webhook_events WHERE event_id = %s LIMIT 1",
+            (event_id,),
+        ).fetchone()
+        conn.commit()
+        return normalize_record(existing) or {}, False
+
+
+def finish_payment_webhook_event(event_id: str, status: str, error: str = "") -> None:
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE payment_webhook_events
+            SET status = %s,
+                error = %s,
+                processed_at = COALESCE(processed_at, NOW())
+            WHERE event_id = %s
+            """,
+            (status, error[:1000], event_id),
+        )
+        conn.commit()
+
+
+def get_pending_payment_for_razorpay_order(razorpay_order_id: str) -> dict[str, Any] | None:
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM payments
+            WHERE razorpay_order_id = %s
+            LIMIT 1
+            """,
+            (razorpay_order_id,),
+        ).fetchone()
+    return normalize_record(row)
+
+
+def mark_razorpay_payment_status(
+    *,
+    razorpay_order_id: str,
+    razorpay_payment_id: str,
+    payment_status: str,
+    razorpay_signature: str = "",
+) -> dict[str, Any] | None:
+    with get_db() as conn:
+        payment = conn.execute(
+            """
+            SELECT *
+            FROM payments
+            WHERE razorpay_order_id = %s
+            LIMIT 1
+            """,
+            (razorpay_order_id,),
+        ).fetchone()
+        if not payment:
+            return None
+
+        if payment.get("payment_status") == "paid":
+            return normalize_record(payment)
+
+        row = conn.execute(
+            """
+            UPDATE payments
+            SET payment_status = %s,
+                razorpay_payment_id = COALESCE(NULLIF(%s, ''), razorpay_payment_id),
+                razorpay_signature = COALESCE(NULLIF(%s, ''), razorpay_signature)
+            WHERE id = %s
+            RETURNING *
+            """,
+            (payment_status, razorpay_payment_id, razorpay_signature, payment["id"]),
+        ).fetchone()
+        conn.commit()
+    return normalize_record(row)
+
+
 def activate_subscription_from_payment(
     user_id: int,
     razorpay_order_id: str,
     razorpay_payment_id: str,
     razorpay_signature: str,
+    razorpay_payment: dict[str, Any] | None = None,
+    razorpay_order: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     with get_db() as conn:
         payment = conn.execute(
@@ -441,6 +571,73 @@ def activate_subscription_from_payment(
 
         if not payment:
             raise HTTPException(status_code=404, detail="Payment order was not found for this user.")
+
+        if payment.get("payment_status") == "paid" and payment.get("razorpay_payment_id") == razorpay_payment_id:
+            user = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
+            return normalize_record(user) or {}
+
+        def update_status(status: str) -> None:
+            conn.execute(
+                """
+                UPDATE payments
+                SET payment_status = %s,
+                    razorpay_payment_id = %s,
+                    razorpay_signature = %s
+                WHERE id = %s
+                """,
+                (status, razorpay_payment_id, razorpay_signature, payment["id"]),
+            )
+            conn.commit()
+
+        if razorpay_payment is None:
+            update_status("verification_incomplete")
+            raise HTTPException(status_code=409, detail="Payment status could not be confirmed with Razorpay.")
+
+        gateway_payment_id = str(razorpay_payment.get("id") or "")
+        gateway_order_id = str(razorpay_payment.get("order_id") or "")
+        gateway_status = str(razorpay_payment.get("status") or "").lower()
+        gateway_currency = str(razorpay_payment.get("currency") or "").upper()
+        gateway_amount = int(razorpay_payment.get("amount") or 0)
+        gateway_captured = bool(razorpay_payment.get("captured"))
+
+        if gateway_payment_id != razorpay_payment_id or gateway_order_id != razorpay_order_id:
+            update_status("mismatched")
+            raise HTTPException(status_code=400, detail="Razorpay payment does not match this order.")
+
+        if gateway_amount != int(payment["amount"]) or gateway_currency != str(payment["currency"]).upper():
+            update_status("amount_mismatch")
+            raise HTTPException(status_code=400, detail="Razorpay payment amount does not match this order.")
+
+        gateway_order_status = str((razorpay_order or {}).get("status") or "").lower()
+        gateway_order_amount = int((razorpay_order or {}).get("amount") or 0)
+        gateway_order_currency = str((razorpay_order or {}).get("currency") or "").upper()
+        gateway_amount_paid = int((razorpay_order or {}).get("amount_paid") or 0)
+        gateway_notes_raw = (razorpay_order or {}).get("notes") or {}
+        gateway_notes = gateway_notes_raw if isinstance(gateway_notes_raw, dict) else {}
+
+        if razorpay_order is None:
+            update_status("order_verification_incomplete")
+            raise HTTPException(status_code=409, detail="Razorpay order status could not be confirmed.")
+
+        if gateway_order_amount != int(payment["amount"]) or gateway_order_currency != str(payment["currency"]).upper():
+            update_status("order_amount_mismatch")
+            raise HTTPException(status_code=400, detail="Razorpay order amount does not match this checkout.")
+
+        if str(gateway_notes.get("user_id") or "") != str(user_id) or str(gateway_notes.get("plan_id") or "") != str(payment["plan_id"]):
+            update_status("order_owner_mismatch")
+            raise HTTPException(status_code=400, detail="Razorpay order ownership does not match this user.")
+
+        if gateway_status == "failed":
+            update_status("failed")
+            raise HTTPException(status_code=402, detail="Razorpay reports this payment as failed.")
+
+        if gateway_status != "captured" or not gateway_captured:
+            update_status(gateway_status or "not_captured")
+            raise HTTPException(status_code=409, detail="Payment is not captured yet. Subscription was not activated.")
+
+        if gateway_order_status != "paid" and gateway_amount_paid < int(payment["amount"]):
+            update_status(gateway_order_status or "order_not_paid")
+            raise HTTPException(status_code=409, detail="Razorpay order is not marked paid yet. Subscription was not activated.")
 
         plan_id = payment["plan_id"]
         now = now_utc()

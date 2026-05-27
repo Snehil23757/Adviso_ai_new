@@ -10,7 +10,7 @@ from psycopg.types.json import Json
 
 from app.config import get_settings
 from app.database import get_db, normalize_record, now_utc
-from app.workspaces import record_job_event
+from app.workspaces import CSV_CONTENT_TYPES, normalized_content_type, record_job_event, validate_csv_upload_request
 
 
 SAMPLE_ROW_LIMIT = 25
@@ -61,7 +61,7 @@ def load_job(job_id: int) -> dict[str, Any]:
     with get_db() as conn:
         row = conn.execute(
             """
-            SELECT j.*, d.storage_bucket, d.storage_path, d.file_name
+            SELECT j.*, d.storage_bucket, d.storage_path, d.file_name, d.content_type, d.size_bytes
             FROM processing_jobs j
             LEFT JOIN datasets d ON d.id = j.dataset_id
             WHERE j.id = %s
@@ -88,6 +88,33 @@ def supabase_object_stream(bucket: str, storage_path: str):
         },
     )
     return urlrequest.urlopen(req, timeout=120)
+
+
+def validate_csv_object_response(response, job: dict[str, Any]) -> None:
+    file_name = str(job.get("file_name") or "")
+    content_type = str(job.get("content_type") or "text/csv")
+    size_bytes = int(job.get("size_bytes") or 0)
+
+    try:
+        validate_csv_upload_request(file_name, content_type, size_bytes)
+    except Exception as exc:
+        raise RuntimeError("Stored upload metadata failed CSV validation.") from exc
+
+    response_content_type = normalized_content_type(response.headers.get("Content-Type") or content_type)
+    if response_content_type not in CSV_CONTENT_TYPES:
+        raise RuntimeError("Stored object content type is not CSV. Upload rejected before processing.")
+
+    content_length = response.headers.get("Content-Length")
+    if content_length:
+        try:
+            response_size = int(content_length)
+        except ValueError as exc:
+            raise RuntimeError("Stored object size could not be verified.") from exc
+        settings = get_settings()
+        if response_size > settings.max_upload_size_bytes:
+            raise RuntimeError("Stored object exceeds the CSV upload size limit.")
+        if size_bytes and response_size != size_bytes:
+            raise RuntimeError("Stored object size does not match the original upload request.")
 
 
 def empty_column_state(position: int) -> dict[str, Any]:
@@ -121,6 +148,8 @@ def profile_csv_response(response, job: dict[str, Any]) -> dict[str, Any]:
     header = next(reader, None)
     if not header:
         return {"row_count": 0, "columns": [], "sample_rows": [], "quality": {"empty": True}}
+    if len(header) == 1 and header[0].lstrip().startswith(("{", "[")):
+        raise RuntimeError("Uploaded object does not look like CSV data.")
 
     columns = [name.strip() or f"column_{index + 1}" for index, name in enumerate(header)]
     states = [empty_column_state(index) for index in range(len(columns))]
@@ -247,6 +276,45 @@ def save_profile(job: dict[str, Any], profile: dict[str, Any]) -> None:
         )
         conn.execute(
             """
+            INSERT INTO dataset_metadata (
+                workspace_id, dataset_id, metadata_json, column_info_json, statistics_json,
+                summaries_json, embeddings_json, sampled_rows_json, quality_json, profile_json,
+                created_by, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (dataset_id) DO UPDATE SET
+                workspace_id = EXCLUDED.workspace_id,
+                metadata_json = EXCLUDED.metadata_json,
+                column_info_json = EXCLUDED.column_info_json,
+                statistics_json = EXCLUDED.statistics_json,
+                sampled_rows_json = EXCLUDED.sampled_rows_json,
+                quality_json = EXCLUDED.quality_json,
+                profile_json = EXCLUDED.profile_json,
+                updated_at = NOW()
+            """,
+            (
+                int(job["workspace_id"]),
+                dataset_id,
+                Json(
+                    {
+                        "file_name": job.get("file_name"),
+                        "storage_bucket": job.get("storage_bucket"),
+                        "storage_path": job.get("storage_path"),
+                        "processing_job_id": job.get("id"),
+                    }
+                ),
+                Json(profile["columns"]),
+                Json({"row_count": profile["row_count"], "column_count": profile["column_count"]}),
+                Json({}),
+                Json({}),
+                Json(profile["sample_rows"]),
+                Json(profile["quality"]),
+                Json({"columns": profile["columns"]}),
+                job.get("created_by"),
+            ),
+        )
+        conn.execute(
+            """
             UPDATE datasets
             SET status = 'profiled', row_count = %s, column_count = %s, updated_at = NOW()
             WHERE id = %s
@@ -258,28 +326,23 @@ def save_profile(job: dict[str, Any], profile: dict[str, Any]) -> None:
 
 def process_csv_profile_job(job_id: int) -> dict[str, Any]:
     job = load_job(job_id)
-    if job.get("type") != "csv_profile":
+    if job.get("type") not in {"csv_profile", "csv_metadata_extraction", "dataset_profiling"}:
         raise RuntimeError(f"Unsupported job type: {job.get('type')}")
 
-    update_job(job_id, status="running", progress=5, attempts=int(job.get("attempts") or 0) + 1, started_at=now_utc())
+    update_job(job_id, status="processing", progress=5, attempts=int(job.get("attempts") or 0) + 1, started_at=now_utc(), error="")
     update_dataset(int(job["dataset_id"]), status="processing")
     record_job_event(job_id, int(job["workspace_id"]), "started", "CSV metadata extraction started.")
 
-    try:
-        with supabase_object_stream(job["storage_bucket"], job["storage_path"]) as response:
-            profile = profile_csv_response(response, job)
-        save_profile(job, profile)
-        final_job = update_job(job_id, status="completed", progress=100, error="", finished_at=now_utc())
-        record_job_event(
-            job_id,
-            int(job["workspace_id"]),
-            "completed",
-            "CSV metadata extraction completed.",
-            {"row_count": profile["row_count"], "column_count": profile["column_count"]},
-        )
-        return final_job
-    except Exception as exc:
-        update_job(job_id, status="failed", error=str(exc), finished_at=now_utc())
-        update_dataset(int(job["dataset_id"]), status="failed")
-        record_job_event(job_id, int(job["workspace_id"]), "failed", "CSV metadata extraction failed.", {"error": str(exc)})
-        raise
+    with supabase_object_stream(job["storage_bucket"], job["storage_path"]) as response:
+        validate_csv_object_response(response, job)
+        profile = profile_csv_response(response, job)
+    save_profile(job, profile)
+    final_job = update_job(job_id, status="completed", progress=100, error="", finished_at=now_utc())
+    record_job_event(
+        job_id,
+        int(job["workspace_id"]),
+        "completed",
+        "CSV metadata extraction completed.",
+        {"row_count": profile["row_count"], "column_count": profile["column_count"]},
+    )
+    return final_job

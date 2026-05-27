@@ -3,7 +3,7 @@ import { Sparkles, ArrowRight, MessageSquareCode, Mail } from "lucide-react";
 
 export default function FinalCTA() {
   const scrollToPortal = () => {
-    const portal = document.getElementById("strategy-portal");
+    const portal = document.getElementById("pricing");
     if (portal) {
       const offset = 80;
       const pos = portal.getBoundingClientRect().top + window.scrollY;
@@ -40,7 +40,7 @@ export default function FinalCTA() {
             onClick={scrollToPortal}
             className="bg-brand-primary hover:bg-brand-primary/95 text-sm font-bold text-brand-inverse px-8 py-4 rounded-xl shadow-lg shadow-brand-primary/20 transition hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
           >
-            <span>Ask Strategic Advisor Live</span>
+            <span>Explore Adviso Plans</span>
             <ArrowRight className="w-4 h-4" />
           </button>
           <a

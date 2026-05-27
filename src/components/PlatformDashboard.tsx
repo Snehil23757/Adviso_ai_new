@@ -67,6 +67,7 @@ import { usePermissions } from "../subscriptions/SubscriptionProvider";
 import { checkoutPlanForId } from "../subscriptions/checkoutPlans";
 import type { DashboardTabId, FeatureKey, PlanDefinition, PlanId } from "../subscriptions/permissions";
 import AccountSettingsPage from "./platform/AccountSettingsPage";
+import FeedbackWidget from "./platform/FeedbackWidget";
 import FirstRunDashboard from "./platform/FirstRunDashboard";
 import PlatformServicePlaceholder from "./platform/PlatformServicePlaceholder";
 import PlatformSidebar from "./platform/PlatformSidebar";
@@ -155,6 +156,19 @@ interface BackendDataset {
   status?: string;
 }
 
+interface BackendDatasetPayload {
+  dataset: BackendDataset;
+  columns: Array<{ name: string; [key: string]: unknown }>;
+  stats?: {
+    sample_rows_json?: Record<string, unknown>[];
+    [key: string]: unknown;
+  };
+  metadata?: {
+    sampled_rows_json?: Record<string, unknown>[];
+    [key: string]: unknown;
+  };
+}
+
 interface BackendJob {
   id: number;
   workspace_id: number;
@@ -190,6 +204,21 @@ interface WorkspaceResponse {
   workspace: BackendWorkspace;
 }
 
+interface WorkspaceSessionResponse {
+  success: boolean;
+  workspace: BackendWorkspace;
+  session: {
+    active_dataset_id?: number | null;
+    active_chat_id?: number | null;
+    active_page?: string;
+    state_json?: Record<string, unknown>;
+  };
+  dataset?: BackendDatasetPayload | null;
+  chats?: Array<{ id: number; title: string; dataset_id?: number | null }>;
+  active_chat?: { id: number; title: string; dataset_id?: number | null } | null;
+  messages?: Array<{ role: "user" | "assistant" | string; content: string; source?: string }>;
+}
+
 interface WorkspacesResponse {
   success: boolean;
   workspaces: BackendWorkspace[];
@@ -211,6 +240,14 @@ interface JobResponse {
   success: boolean;
   job: BackendJob;
   events: BackendJobEvent[];
+}
+
+interface WorkspaceChatResponse {
+  success: boolean;
+  answer?: string;
+  source?: ChatMessage["source"];
+  chat?: { id: number; title?: string; dataset_id?: number | null };
+  messages?: Array<{ role: "user" | "assistant" | string; content: string; source?: string }>;
 }
 
 interface MultiValueCandidate {
@@ -259,6 +296,9 @@ const BACKEND_ANALYSIS_ROW_LIMIT = 1500;
 const LOCAL_STORAGE_ROW_LIMIT = 10000;
 const STAGED_ROW_LIMIT = 75000;
 const LOCAL_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;
+const MAX_CSV_UPLOAD_BYTES = 250 * 1024 * 1024;
+const CSV_UPLOAD_CONTENT_TYPE = "text/csv";
+const CSV_UPLOAD_CONTENT_TYPES = new Set(["text/csv", "application/csv", "text/x-csv", "application/vnd.ms-excel", ""]);
 const CHARTS: ChartType[] = [
   "Line",
   "Area",
@@ -443,16 +483,25 @@ function progressFromUnknown(value: unknown) {
   return Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : null;
 }
 
+function csvUploadError(file: File) {
+  if (!file.name.toLowerCase().endsWith(".csv")) return "Only .csv files can be uploaded.";
+  if (file.size <= 0) return "The selected CSV file is empty.";
+  if (file.size > MAX_CSV_UPLOAD_BYTES) return "CSV uploads are limited to 250 MB.";
+  if (!CSV_UPLOAD_CONTENT_TYPES.has((file.type || "").toLowerCase())) {
+    return "Only CSV content types are allowed. Please export the file as a CSV and try again.";
+  }
+  return "";
+}
+
 async function uploadFileToSignedTarget(upload: BackendUploadTarget, file: File) {
   const target = signedUploadUrl(upload);
   if (!target) return;
 
-  const contentType = file.type || "text/csv";
   const send = async (method: "POST" | "PUT") =>
     fetch(target, {
       method,
       headers: {
-        "Content-Type": contentType,
+        "Content-Type": CSV_UPLOAD_CONTENT_TYPE,
         "x-upsert": "false",
       },
       body: file,
@@ -954,12 +1003,15 @@ export default function PlatformDashboard({
   const [showPlanPicker, setShowPlanPicker] = useState(false);
   const [workspaceNotice, setWorkspaceNotice] = useState("");
   const [backendWorkspaceId, setBackendWorkspaceId] = useState<number | null>(null);
+  const [activeBackendDatasetId, setActiveBackendDatasetId] = useState<number | null>(null);
+  const [activeBackendChatId, setActiveBackendChatId] = useState<number | null>(null);
   const [backendJobId, setBackendJobId] = useState<number | null>(null);
   const [backendUploadBusy, setBackendUploadBusy] = useState(false);
   const [backendUploadProgress, setBackendUploadProgress] = useState<number | null>(null);
   const [backendUploadMessage, setBackendUploadMessage] = useState("");
   const uploadSocketRef = useRef<WebSocket | null>(null);
   const jobPollTimerRef = useRef<number | null>(null);
+  const sessionRestoreRef = useRef(false);
   const bannerStorageKey = `adviso_top_banner_closed_${userEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}`;
   const [showTopBanner, setShowTopBanner] = useState(() => localStorage.getItem(bannerStorageKey) !== "true");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -1041,6 +1093,53 @@ export default function PlatformDashboard({
     setShowTopBanner(false);
   };
 
+  const applyWorkspaceSession = (session: WorkspaceSessionResponse) => {
+    const workspaceId = backendId(session.workspace.id);
+    if (workspaceId) setBackendWorkspaceId(workspaceId);
+    const datasetId = backendId(session.session.active_dataset_id || session.dataset?.dataset?.id);
+    if (datasetId) setActiveBackendDatasetId(datasetId);
+    const chatId = backendId(session.session.active_chat_id || session.active_chat?.id);
+    if (chatId) setActiveBackendChatId(chatId);
+
+    const restoredPage = session.session.active_page;
+    if (restoredPage && Object.prototype.hasOwnProperty.call(TAB_HELP, restoredPage)) {
+      selectTab(restoredPage as TabType);
+    }
+
+    const restoredMessages = (session.messages || [])
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .map((message) => ({
+        role: message.role as "user" | "assistant",
+        content: message.content,
+        source: message.source,
+      }));
+    if (restoredMessages.length) setChatMessages(restoredMessages);
+
+    if (!data.length && session.dataset?.dataset) {
+      const restoredRows = session.dataset.metadata?.sampled_rows_json || session.dataset.stats?.sample_rows_json || [];
+      const restoredColumns = session.dataset.columns.map((column) => String(column.name || "")).filter(Boolean);
+      if (restoredRows.length && restoredColumns.length) {
+        setData(restoredRows);
+        setAllColumns(restoredColumns);
+        setColumns(restoredColumns);
+        setFileName(session.dataset.dataset.file_name || "restored-workspace.csv");
+        setWorkspaceNotice("Restored your last workspace from backend metadata and sampled rows.");
+      }
+    }
+  };
+
+  const persistWorkspaceSession = async (patch: Record<string, unknown>) => {
+    if (!backendWorkspaceId) return;
+    try {
+      await authorizedFetch(`/api/workspaces/${backendWorkspaceId}/session`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+    } catch {
+      // Session restoration is a convenience layer; the active workspace remains usable.
+    }
+  };
+
   useEffect(() => {
     if (!data.length || !allColumns.length || !columns.length) return;
     saveWorkspaceSnapshot(userEmail, {
@@ -1051,6 +1150,44 @@ export default function PlatformDashboard({
       savedAt: Date.now(),
     });
   }, [userEmail, data, allColumns, columns, fileName]);
+
+  useEffect(() => {
+    if (sessionRestoreRef.current) return;
+    sessionRestoreRef.current = true;
+    const restoreSession = async () => {
+      try {
+        const response = await authorizedFetch("/api/workspaces/session");
+        const session = await readApiJson<WorkspaceSessionResponse>(response);
+        applyWorkspaceSession(session);
+      } catch {
+        // Local snapshot restoration still works if the backend session is unavailable.
+      }
+    };
+    void restoreSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!backendWorkspaceId) return;
+    const timer = window.setTimeout(() => {
+      void persistWorkspaceSession({
+        active_dataset_id: activeBackendDatasetId,
+        active_chat_id: activeBackendChatId,
+        active_page: activeTab,
+        state_json: {
+          service: activeServiceId,
+          chartType,
+          xAxisCol,
+          yAxisCol,
+          secondaryCol,
+          forecastCol,
+          forecastPeriods,
+        },
+      });
+    }, 650);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendWorkspaceId, activeBackendDatasetId, activeBackendChatId, activeTab, activeServiceId, chartType, xAxisCol, yAxisCol, secondaryCol, forecastCol, forecastPeriods]);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -1120,13 +1257,20 @@ export default function PlatformDashboard({
     }
     setLoadingInsight(mode);
     try {
-      const response = await authorizedFetch("/api/dataset/insights", {
+      const workspaceInsightPath =
+        backendWorkspaceId && activeBackendDatasetId
+          ? `/api/workspaces/${backendWorkspaceId}/datasets/${activeBackendDatasetId}/insights`
+          : "/api/dataset/insights";
+      const response = await authorizedFetch(workspaceInsightPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
           question,
           context,
+          workspace_id: backendWorkspaceId,
+          dataset_id: activeBackendDatasetId,
+          active_page: activeTab,
           columns: cols,
           rows: rows.slice(0, BACKEND_ANALYSIS_ROW_LIMIT),
         }),
@@ -1290,13 +1434,14 @@ export default function PlatformDashboard({
         body: JSON.stringify({
           file_name: file.name,
           size_bytes: file.size,
-          content_type: file.type || "text/csv",
+          content_type: CSV_UPLOAD_CONTENT_TYPE,
           checksum_sha256: "",
         }),
       });
       const init = await readApiJson<UploadInitResponse>(initResponse);
       const datasetId = backendId(init.dataset.id);
       if (!datasetId) throw new Error("The backend did not return a valid dataset id.");
+      setActiveBackendDatasetId(datasetId);
 
       setBackendUploadProgress(18);
       if (!init.upload.signed_url) {
@@ -1324,6 +1469,7 @@ export default function PlatformDashboard({
       if (!jobId) throw new Error("The backend did not return a valid processing job id.");
 
       setBackendJobId(jobId);
+      setActiveBackendDatasetId(datasetId);
       setBackendUploadProgress(progressFromUnknown(complete.job.progress) ?? 62);
       setBackendUploadMessage("CSV uploaded. Metadata extraction is queued.");
       setWorkspaceNotice(`Backend upload started for ${file.name}. Adviso AI will process metadata, statistics, and summaries without loading the full CSV in the browser.`);
@@ -1380,6 +1526,17 @@ export default function PlatformDashboard({
   };
 
   const processFile = (file: File) => {
+    const validationError = csvUploadError(file);
+    if (validationError) {
+      clearBackendWatchers();
+      setBackendJobId(null);
+      setBackendUploadBusy(false);
+      setBackendUploadProgress(null);
+      setBackendUploadMessage(validationError);
+      setWorkspaceNotice(validationError);
+      return;
+    }
+
     void startBackendUploadPipeline(file);
     setFileName(file.name);
 
@@ -1491,12 +1648,23 @@ export default function PlatformDashboard({
     setChatInput("");
     setIsChatLoading(true);
     try {
-      const response = await authorizedFetch("/api/chat", {
+      const workspaceChatPath = backendWorkspaceId ? `/api/workspaces/${backendWorkspaceId}/chats/message` : "/api/chat";
+      const response = await authorizedFetch(workspaceChatPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, columns, rows: data.slice(0, BACKEND_ANALYSIS_ROW_LIMIT) }),
+        body: JSON.stringify({
+          question,
+          columns,
+          rows: data.slice(0, BACKEND_ANALYSIS_ROW_LIMIT),
+          workspace_id: backendWorkspaceId,
+          dataset_id: activeBackendDatasetId,
+          chat_id: activeBackendChatId,
+          active_page: "Chat",
+        }),
       });
-      const result = await readApiJson<{ answer?: string; source?: ChatMessage["source"] }>(response);
+      const result = await readApiJson<WorkspaceChatResponse>(response);
+      const nextChatId = backendId(result.chat?.id);
+      if (nextChatId) setActiveBackendChatId(nextChatId);
       setChatMessages((prev) => [
         ...prev,
         {
@@ -2041,6 +2209,12 @@ export default function PlatformDashboard({
         </main>
       </div>
       </div>
+
+      <FeedbackWidget
+        userEmail={userEmail}
+        workspaceId={backendWorkspaceId}
+        activePage={activeService?.label || activeTab}
+      />
 
       {stagedData && (
         <DatasetValidationModal

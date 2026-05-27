@@ -87,11 +87,14 @@ class DatasetSummaryRequest(BaseModel):
 
 
 class DatasetInsightRequest(BaseModel):
-    rows: list[dict]
-    columns: list[str] = []
+    rows: list[dict] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
     mode: str = "overview"
     question: str = ""
     context: dict = Field(default_factory=dict)
+    workspace_id: int | None = None
+    dataset_id: int | None = None
+    active_page: str = ""
 
 
 class DatasetInsightResponse(BaseModel):
@@ -103,8 +106,13 @@ class DatasetInsightResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    rows: list[dict]
-    columns: list[str] = []
+    rows: list[dict] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    workspace_id: int | None = None
+    dataset_id: int | None = None
+    chat_id: int | None = None
+    context: dict = Field(default_factory=dict)
+    active_page: str = "Chat"
 
 
 class ChatResponse(BaseModel):
@@ -147,6 +155,35 @@ class MeResponse(BaseModel):
     permissions: dict
 
 
+class EmailValidationRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class EmailValidationResponse(BaseModel):
+    success: bool = True
+    valid: bool
+    email: str
+    domain: str = ""
+    reason: str = ""
+    message: str = ""
+    provider_type: str = ""
+    has_mx: bool | None = None
+
+
+class PasswordResetEmailRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class PasswordResetEmailResponse(BaseModel):
+    success: bool = True
+    message: str
+
+
+class EmailVerificationResponse(BaseModel):
+    success: bool = True
+    message: str
+
+
 class WorkspaceCreateRequest(BaseModel):
     name: str = Field(default="My Workspace", min_length=1, max_length=120)
 
@@ -163,7 +200,7 @@ class WorkspacesResponse(BaseModel):
 
 class UploadInitRequest(BaseModel):
     file_name: str = Field(min_length=1, max_length=255)
-    size_bytes: int = Field(ge=1)
+    size_bytes: int = Field(ge=1, le=262_144_000)
     content_type: str = Field(default="text/csv", max_length=120)
     checksum_sha256: str = Field(default="", max_length=128)
 
@@ -171,7 +208,7 @@ class UploadInitRequest(BaseModel):
 class UploadCompleteRequest(BaseModel):
     storage_path: str = Field(default="", max_length=1024)
     checksum_sha256: str = Field(default="", max_length=128)
-    size_bytes: int | None = Field(default=None, ge=1)
+    size_bytes: int | None = Field(default=None, ge=1, le=262_144_000)
 
 
 class UploadInitResponse(BaseModel):
@@ -202,6 +239,56 @@ class JobResponse(BaseModel):
     success: bool = True
     job: dict
     events: list[dict] = Field(default_factory=list)
+
+
+class WorkspaceSessionUpdate(BaseModel):
+    active_dataset_id: int | None = None
+    active_chat_id: int | None = None
+    active_page: str | None = Field(default=None, max_length=80)
+    state_json: dict | None = None
+
+
+class WorkspaceSessionResponse(BaseModel):
+    success: bool = True
+    workspace: dict
+    session: dict
+    dataset: dict | None = None
+    chats: list[dict] = Field(default_factory=list)
+    active_chat: dict | None = None
+    messages: list[dict] = Field(default_factory=list)
+
+
+class WorkspaceChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    dataset_id: int | None = None
+    chat_id: int | None = None
+    rows: list[dict] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    context: dict = Field(default_factory=dict)
+    active_page: str = "Chat"
+
+
+class WorkspaceChatCreateRequest(BaseModel):
+    dataset_id: int | None = None
+    title: str = Field(default="New chat", max_length=120)
+
+
+class FeedbackSubmissionRequest(BaseModel):
+    workspace_id: int | None = None
+    satisfaction_score: int = Field(ge=1, le=5)
+    likes_text: str = Field(min_length=3, max_length=3000)
+    insight_ease_score: int = Field(ge=1, le=5)
+    insight_accuracy_score: int = Field(ge=1, le=5)
+    features_used: list[str] = Field(default_factory=list)
+    improvement_text: str = Field(default="", max_length=3000)
+    additional_feedback: str = Field(default="", max_length=3000)
+    active_page: str = Field(default="", max_length=120)
+    metadata: dict = Field(default_factory=dict)
+
+
+class FeedbackSubmissionResponse(BaseModel):
+    success: bool = True
+    feedback: dict
 
 
 class AccountPreferencesUpdate(BaseModel):

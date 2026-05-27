@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.queue_service import get_queue_service
 from app.services.redis_service import get_redis_service
 
 
@@ -18,7 +19,7 @@ def redis_health() -> dict[str, Any]:
 
 
 def enqueue_processing_job(job: dict[str, Any]) -> bool:
-    return get_redis_service().enqueue_processing_job(job)
+    return get_queue_service().enqueue_processing_job(job)
 
 
 def publish_job_event(workspace_id: int, event: dict[str, Any]) -> bool:
@@ -27,3 +28,11 @@ def publish_job_event(workspace_id: int, event: dict[str, Any]) -> bool:
 
 def persist_job_progress(workspace_id: int, job: dict[str, Any], event: dict[str, Any] | None = None) -> bool:
     return get_redis_service().persist_job_progress(workspace_id, job, event)
+
+
+def celery_health() -> dict[str, Any]:
+    return get_queue_service().celery_health()
+
+
+def queue_status() -> dict[str, Any]:
+    return get_queue_service().queue_status()

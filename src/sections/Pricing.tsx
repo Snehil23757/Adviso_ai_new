@@ -217,7 +217,7 @@ export default function Pricing({ onSelectPlan }: { onSelectPlan?: (name: string
                       if (onSelectPlan) {
                         onSelectPlan(p.name, `₹${finalizedPrice.toLocaleString("en-IN")}`, finalizedPrice * 100);
                       } else {
-                        const portal = document.getElementById("strategy-portal");
+                        const portal = document.getElementById("pricing");
                         if (portal) {
                           const offset = 80;
                           window.scrollTo({

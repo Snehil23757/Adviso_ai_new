@@ -148,8 +148,11 @@ class RedisService:
             payload = _stable_json(event)
             channel = f"ws:workspace:{workspace_id}"
             stream = f"stream:workspace:{workspace_id}:events"
-            client.publish(channel, payload)
-            client.xadd(stream, {"event": payload}, maxlen=1000, approximate=True)
+            pipeline = client.pipeline()
+            pipeline.publish(channel, payload)
+            pipeline.xadd(stream, {"event": payload}, maxlen=1000, approximate=True)
+            pipeline.expire(stream, 60 * 60 * 24)
+            pipeline.execute()
             return True
         except Exception as exc:
             self._last_error = str(exc)

@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
-  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -12,6 +11,7 @@ import {
 } from "firebase/auth";
 
 import { auth, googleProvider, isFirebaseConfigured } from "../firebase.js";
+import { apiUrl, readApiJson } from "../config";
 
 export interface FirebaseUserProfile {
   firebase_uid: string;
@@ -64,6 +64,46 @@ function profileFromFirebaseUser(user: User): FirebaseUserProfile {
   };
 }
 
+interface EmailValidationResponse {
+  success: boolean;
+  valid: boolean;
+  message?: string;
+}
+
+async function validateEmailBeforeRegistration(email: string) {
+  const response = await fetch(apiUrl("/api/auth/validate-email"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const result = await readApiJson<EmailValidationResponse>(response);
+  if (!result.valid) {
+    throw new Error(result.message || "Please use a valid permanent email address.");
+  }
+}
+
+async function sendBrandedPasswordReset(email: string) {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl("/api/auth/password-reset"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+  } catch (error) {
+    throw Object.assign(new Error("Backend password reset is unavailable."), { backendUnavailable: true, cause: error });
+  }
+  await readApiJson<{ success: boolean; message: string }>(response);
+}
+
+async function sendBrandedEmailVerification(token: string) {
+  const response = await fetch(apiUrl("/api/auth/email-verification"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  await readApiJson<{ success: boolean; message: string }>(response);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<FirebaseUserProfile | null>(null);
@@ -108,10 +148,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await refreshSession();
       },
       registerEmail: async (fullName, email, password) => {
+        await validateEmailBeforeRegistration(email);
         const credential = await createUserWithEmailAndPassword(requireAuth(), email, password);
         await updateProfile(credential.user, { displayName: fullName });
-        await sendEmailVerification(credential.user);
-        await credential.user.getIdToken(true);
+        const token = await credential.user.getIdToken(true);
+        await sendBrandedEmailVerification(token);
+        const sessionResponse = await fetch(apiUrl("/api/workspaces/session"), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        await readApiJson(sessionResponse);
         await refreshSession();
       },
       signInGoogle: async () => {
@@ -119,7 +164,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await refreshSession();
       },
       resetPassword: async (email) => {
-        await sendPasswordResetEmail(requireAuth(), email);
+        try {
+          await sendBrandedPasswordReset(email);
+        } catch (error) {
+          if (!(error instanceof Error) || !(error as Error & { backendUnavailable?: boolean }).backendUnavailable) {
+            throw error;
+          }
+          await sendPasswordResetEmail(requireAuth(), email);
+        }
       },
       logout: async () => {
         await signOut(requireAuth());

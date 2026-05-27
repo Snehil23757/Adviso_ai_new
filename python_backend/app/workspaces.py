@@ -14,9 +14,40 @@ from psycopg.types.json import Json
 from app.config import get_settings
 from app.database import get_db, normalize_record, normalize_row
 from app.queueing import enqueue_processing_job, persist_job_progress, publish_job_event, redis_configured
+from app.services.email_service import queue_welcome_email_for_user
+from app.services.limits import enforce_upload_quota
+from app.services.usage import record_usage
+from app.tenant import store_audit_event
 
 
 WORKSPACE_ROLES = {"owner", "admin", "analyst", "viewer", "member"}
+CSV_CONTENT_TYPES = {
+    "text/csv",
+    "application/csv",
+    "text/x-csv",
+    "application/vnd.ms-excel",
+}
+
+
+def normalized_content_type(value: str) -> str:
+    return (value or "").split(";", 1)[0].strip().lower()
+
+
+def validate_csv_upload_request(file_name: str, content_type: str, size_bytes: int) -> str:
+    clean_name = (file_name or "").strip()
+    if not clean_name.lower().endswith(".csv"):
+        raise HTTPException(status_code=415, detail="Only .csv files are allowed.")
+
+    settings = get_settings()
+    if size_bytes <= 0:
+        raise HTTPException(status_code=400, detail="CSV upload size must be greater than zero.")
+    if size_bytes > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=413, detail=f"CSV uploads are limited to {settings.max_upload_size_bytes} bytes.")
+
+    normalized = normalized_content_type(content_type or "text/csv")
+    if normalized not in CSV_CONTENT_TYPES:
+        raise HTTPException(status_code=415, detail="Only CSV content types are allowed.")
+    return normalized
 
 
 def slugify(value: str) -> str:
@@ -37,6 +68,7 @@ def ensure_default_workspace(user: dict[str, Any]) -> dict[str, Any]:
             FROM workspaces w
             JOIN workspace_members wm ON wm.workspace_id = w.id
             WHERE wm.user_id = %s AND wm.status = 'active'
+              AND w.deleted_at IS NULL
             ORDER BY w.created_at ASC
             LIMIT 1
             """,
@@ -64,6 +96,16 @@ def ensure_default_workspace(user: dict[str, Any]) -> dict[str, Any]:
         )
         conn.commit()
     workspace["member_role"] = "owner"
+    store_audit_event(
+        int(workspace["id"]),
+        int(user["id"]),
+        "workspace.created",
+        "workspace",
+        str(workspace["id"]),
+        {"name": name},
+        event_type="workspace",
+    )
+    queue_welcome_email_for_user(user, int(workspace["id"]))
     return normalize_record(workspace) or {}
 
 
@@ -74,11 +116,12 @@ def list_workspaces_for_user(user: dict[str, Any]) -> list[dict[str, Any]]:
             """
             SELECT w.*, wm.role AS member_role,
                    (
-                       SELECT COUNT(*) FROM datasets d WHERE d.workspace_id = w.id
+                       SELECT COUNT(*) FROM datasets d WHERE d.workspace_id = w.id AND d.deleted_at IS NULL
                    ) AS dataset_count
             FROM workspaces w
             JOIN workspace_members wm ON wm.workspace_id = w.id
             WHERE wm.user_id = %s AND wm.status = 'active'
+              AND w.deleted_at IS NULL
             ORDER BY w.created_at ASC
             """,
             (user["id"],),
@@ -106,6 +149,15 @@ def create_workspace_for_user(user: dict[str, Any], name: str) -> dict[str, Any]
         )
         conn.commit()
     workspace["member_role"] = "owner"
+    store_audit_event(
+        int(workspace["id"]),
+        int(user["id"]),
+        "workspace.created",
+        "workspace",
+        str(workspace["id"]),
+        {"name": clean_name},
+        event_type="workspace",
+    )
     return normalize_record(workspace) or {}
 
 
@@ -117,6 +169,7 @@ def require_workspace_access(user: dict[str, Any], workspace_id: int, allowed_ro
             FROM workspaces w
             JOIN workspace_members wm ON wm.workspace_id = w.id
             WHERE w.id = %s AND wm.user_id = %s AND wm.status = 'active'
+              AND w.deleted_at IS NULL
             LIMIT 1
             """,
             (workspace_id, user["id"]),
@@ -181,10 +234,13 @@ def create_signed_upload_payload(storage_path: str) -> dict[str, Any]:
 
 def init_dataset_upload(user: dict[str, Any], workspace_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     require_workspace_access(user, workspace_id, {"owner", "admin", "analyst", "member"})
-    settings = get_settings()
     size_bytes = int(payload["size_bytes"])
-    if size_bytes > settings.max_upload_size_bytes:
-        raise HTTPException(status_code=413, detail=f"CSV uploads are limited to {settings.max_upload_size_bytes} bytes.")
+    content_type = validate_csv_upload_request(
+        str(payload["file_name"]),
+        str(payload.get("content_type") or "text/csv"),
+        size_bytes,
+    )
+    enforce_upload_quota(user, workspace_id, size_bytes)
 
     storage_path = storage_path_for_upload(workspace_id, int(user["id"]), payload["file_name"])
     upload = create_signed_upload_payload(storage_path)
@@ -204,13 +260,31 @@ def init_dataset_upload(user: dict[str, Any], workspace_id: int, payload: dict[s
                 upload["bucket"],
                 storage_path,
                 payload["file_name"],
-                payload.get("content_type") or "text/csv",
+                content_type,
                 size_bytes,
                 payload.get("checksum_sha256") or "",
                 Json({"upload_mode": upload["mode"]}),
             ),
         ).fetchone()
         conn.commit()
+    record_usage(
+        workspace_id=workspace_id,
+        user_id=int(user["id"]),
+        metric="upload.requested",
+        units=size_bytes,
+        dataset_id=int(dataset["id"]),
+        endpoint="/api/workspaces/{workspace_id}/uploads/init",
+        metadata={"file_name": payload["file_name"], "content_type": content_type},
+    )
+    store_audit_event(
+        workspace_id,
+        int(user["id"]),
+        "upload.requested",
+        "dataset",
+        str(dataset["id"]),
+        {"file_name": payload["file_name"], "size_bytes": size_bytes, "mode": upload["mode"]},
+        event_type="uploads",
+    )
     return {"dataset": normalize_record(dataset) or {}, "upload": upload}
 
 
@@ -222,7 +296,7 @@ def list_datasets_for_workspace(user: dict[str, Any], workspace_id: int) -> list
             SELECT d.*, u.email AS uploaded_by_email
             FROM datasets d
             LEFT JOIN users u ON u.id = d.uploaded_by
-            WHERE d.workspace_id = %s
+            WHERE d.workspace_id = %s AND d.deleted_at IS NULL
             ORDER BY d.created_at DESC
             LIMIT 100
             """,
@@ -235,7 +309,7 @@ def get_dataset_for_workspace(user: dict[str, Any], workspace_id: int, dataset_i
     require_workspace_access(user, workspace_id)
     with get_db() as conn:
         dataset = conn.execute(
-            "SELECT * FROM datasets WHERE workspace_id = %s AND id = %s",
+            "SELECT * FROM datasets WHERE workspace_id = %s AND id = %s AND deleted_at IS NULL",
             (workspace_id, dataset_id),
         ).fetchone()
         if not dataset:
@@ -253,6 +327,83 @@ def get_dataset_for_workspace(user: dict[str, Any], workspace_id: int, dataset_i
         "columns": normalize_row(columns),
         "stats": normalize_record(stats) or {},
     }
+
+
+def soft_delete_dataset_for_workspace(user: dict[str, Any], workspace_id: int, dataset_id: int) -> dict[str, Any]:
+    require_workspace_access(user, workspace_id, {"owner", "admin", "analyst"})
+    with get_db() as conn:
+        dataset = conn.execute(
+            """
+            UPDATE datasets
+            SET deleted_at = COALESCE(deleted_at, NOW()),
+                status = 'deleted',
+                updated_at = NOW()
+            WHERE workspace_id = %s AND id = %s AND deleted_at IS NULL
+            RETURNING *
+            """,
+            (workspace_id, dataset_id),
+        ).fetchone()
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found.")
+        conn.commit()
+    store_audit_event(
+        workspace_id,
+        int(user["id"]),
+        "dataset.deleted",
+        "dataset",
+        str(dataset_id),
+        {"soft_delete": True, "file_name": dataset["file_name"]},
+        event_type="workspace",
+    )
+    return normalize_record(dataset) or {}
+
+
+def soft_delete_workspace_for_user(user: dict[str, Any], workspace_id: int) -> dict[str, Any]:
+    require_workspace_access(user, workspace_id, {"owner", "admin"})
+    with get_db() as conn:
+        workspace = conn.execute(
+            """
+            UPDATE workspaces
+            SET deleted_at = COALESCE(deleted_at, NOW()),
+                updated_at = NOW()
+            WHERE id = %s AND deleted_at IS NULL
+            RETURNING *
+            """,
+            (workspace_id,),
+        ).fetchone()
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Workspace not found.")
+        conn.execute(
+            """
+            UPDATE ai_chats
+            SET deleted_at = COALESCE(deleted_at, NOW()),
+                status = 'deleted',
+                updated_at = NOW()
+            WHERE workspace_id = %s AND deleted_at IS NULL
+            """,
+            (workspace_id,),
+        )
+        conn.execute(
+            """
+            UPDATE datasets
+            SET deleted_at = COALESCE(deleted_at, NOW()),
+                status = 'deleted',
+                updated_at = NOW()
+            WHERE workspace_id = %s AND deleted_at IS NULL
+            """,
+            (workspace_id,),
+        )
+        conn.commit()
+    store_audit_event(
+        workspace_id,
+        int(user["id"]),
+        "workspace.deleted",
+        "workspace",
+        str(workspace_id),
+        {"soft_delete": True},
+        event_type="workspace",
+    )
+    return normalize_record(workspace) or {}
 
 
 def record_job_event(job_id: int, workspace_id: int, event_type: str, message: str = "", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -310,7 +461,16 @@ def create_processing_job(
         workspace_id,
         "queued",
         "Processing job queued.",
-        {"redis_enqueued": queued, "redis_configured": redis_configured()},
+        {"celery_enqueued": queued, "redis_configured": redis_configured()},
+    )
+    store_audit_event(
+        workspace_id,
+        int(user["id"]),
+        "job.queued",
+        "processing_job",
+        str(normalized["id"]),
+        {"job_type": job_type, "dataset_id": dataset_id, "celery_enqueued": queued},
+        event_type="jobs",
     )
     return normalized
 
@@ -318,21 +478,45 @@ def create_processing_job(
 def complete_dataset_upload(user: dict[str, Any], workspace_id: int, dataset_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     require_workspace_access(user, workspace_id, {"owner", "admin", "analyst", "member"})
     with get_db() as conn:
+        existing = conn.execute(
+            """
+            SELECT *
+            FROM datasets
+            WHERE workspace_id = %s AND id = %s AND deleted_at IS NULL
+            LIMIT 1
+            """,
+            (workspace_id, dataset_id),
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Dataset not found.")
+
+        expected_path = str(existing["storage_path"] or "")
+        supplied_path = str(payload.get("storage_path") or expected_path)
+        if supplied_path != expected_path:
+            raise HTTPException(status_code=400, detail="Upload completion path does not match the issued signed upload path.")
+
+        completed_size = int(payload.get("size_bytes") or existing["size_bytes"] or 0)
+        if completed_size != int(existing["size_bytes"] or 0):
+            raise HTTPException(status_code=400, detail="Upload completion size does not match the original CSV upload request.")
+
+        validate_csv_upload_request(
+            str(existing["file_name"]),
+            str(existing["content_type"] or "text/csv"),
+            completed_size,
+        )
+
         dataset = conn.execute(
             """
             UPDATE datasets
             SET status = 'queued',
-                storage_path = COALESCE(NULLIF(%s, ''), storage_path),
                 checksum_sha256 = COALESCE(NULLIF(%s, ''), checksum_sha256),
-                size_bytes = COALESCE(%s, size_bytes),
                 updated_at = NOW()
             WHERE workspace_id = %s AND id = %s
+              AND deleted_at IS NULL
             RETURNING *
             """,
             (
-                payload.get("storage_path") or "",
                 payload.get("checksum_sha256") or "",
-                payload.get("size_bytes"),
                 workspace_id,
                 dataset_id,
             ),
@@ -341,11 +525,30 @@ def complete_dataset_upload(user: dict[str, Any], workspace_id: int, dataset_id:
             raise HTTPException(status_code=404, detail="Dataset not found.")
         conn.commit()
 
+    record_usage(
+        workspace_id=workspace_id,
+        user_id=int(user["id"]),
+        metric="upload.count",
+        units=int(dataset["size_bytes"] or 1),
+        dataset_id=dataset_id,
+        endpoint="/api/workspaces/{workspace_id}/uploads/{dataset_id}/complete",
+        metadata={"file_name": dataset["file_name"], "status": "queued"},
+    )
+    store_audit_event(
+        workspace_id,
+        int(user["id"]),
+        "upload.completed",
+        "dataset",
+        str(dataset_id),
+        {"file_name": dataset["file_name"], "size_bytes": dataset["size_bytes"]},
+        event_type="uploads",
+    )
+
     job = create_processing_job(
         user,
         workspace_id,
         dataset_id,
-        "csv_profile",
+        "csv_metadata_extraction",
         {
             "storage_bucket": dataset["storage_bucket"],
             "storage_path": dataset["storage_path"],
@@ -353,6 +556,19 @@ def complete_dataset_upload(user: dict[str, Any], workspace_id: int, dataset_id:
             "size_bytes": dataset["size_bytes"],
         },
     )
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO workspace_sessions (workspace_id, user_id, active_dataset_id, active_page)
+            VALUES (%s, %s, %s, 'Overview')
+            ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+                active_dataset_id = EXCLUDED.active_dataset_id,
+                updated_at = NOW(),
+                last_seen_at = NOW()
+            """,
+            (workspace_id, user["id"], dataset_id),
+        )
+        conn.commit()
     return {"dataset": normalize_record(dataset) or {}, "job": job}
 
 

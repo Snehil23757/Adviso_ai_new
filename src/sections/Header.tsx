@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Sparkles, Menu, X, ArrowRight, ShieldCheck, Cpu, Moon, Sun } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Menu, X, ArrowRight, Moon, Sun } from "lucide-react";
 import Logo from "../components/Logo.tsx";
 
 interface HeaderProps {
@@ -14,15 +14,44 @@ interface HeaderProps {
 
 export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, onNavigatePublic, theme, toggleTheme }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const lastScrollYRef = useRef(0);
 
   useEffect(() => {
+    let frame = 0;
+
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const currentY = window.scrollY;
+        const delta = currentY - lastScrollYRef.current;
+
+        setIsScrolled(currentY > 20);
+
+        if (!isMenuOpen) {
+          if (currentY > 140 && delta > 8) {
+            setIsMinimized(true);
+          } else if (delta < -8 || currentY < 80) {
+            setIsMinimized(false);
+          }
+        }
+
+        lastScrollYRef.current = currentY;
+      });
     };
+
+    handleScroll();
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    if (isMenuOpen) setIsMinimized(false);
+  }, [isMenuOpen]);
 
   const scrollToSection = (id: string, path?: string) => {
     setIsMenuOpen(false);
@@ -42,12 +71,16 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
   };
 
   return (
-    <header className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
+    <header className={`fixed top-0 left-0 w-full z-50 transition-all duration-500 ease-out ${
+      isMinimized ? "-translate-y-2 opacity-95" : "translate-y-0 opacity-100"
+    } ${
       isScrolled 
-        ? "bg-brand-background/80 border-b border-brand-border backdrop-blur-xl shadow-sm" 
-        : "bg-transparent border-b border-transparent"
+        ? "bg-brand-background/90 border-b border-brand-border backdrop-blur-2xl shadow-lg shadow-black/5" 
+        : "bg-brand-background/65 border-b border-brand-border/50 backdrop-blur-2xl"
     }`}>
-      <div className="w-full px-6 md:px-12 xl:px-24 h-24 flex items-center justify-between max-w-[2000px] mx-auto">
+      <div className={`w-full px-6 md:px-12 xl:px-24 flex items-center justify-between max-w-[2000px] mx-auto transition-all duration-500 ease-out ${
+        isMinimized ? "h-16 lg:h-[72px]" : "h-24 lg:h-[104px]"
+      }`}>
         
         {/* Left: Adviso AI Logo with SVG Graphic */}
         <div 
@@ -60,21 +93,24 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
           }}
           className="cursor-pointer group flex items-center h-12"
         >
-          <Logo size="md" />
+          <Logo size={isMinimized ? "md" : "lg"} />
         </div>
 
         {/* Center: Navigation Options */}
-        <nav className="hidden lg:flex items-center gap-7">
+        <nav className={`hidden lg:flex items-center transition-all duration-500 ${
+          isMinimized ? "gap-7 scale-[0.96] opacity-75" : "gap-9 scale-100 opacity-100"
+        }`}>
           {[
-            { label: "Features", id: "core-features", path: "/features" },
+            { label: "Platform", id: "platform-overview", path: "/platform" },
+            { label: "Features", id: "platform-overview", path: "/features" },
+            { label: "Use Cases", id: "use-cases", path: "/use-cases" },
+            { label: "Architecture", id: "security", path: "/architecture" },
             { label: "Pricing", id: "pricing", path: "/pricing" },
-            { label: "Docs", id: "architecture", path: "/about" },
-            { label: "Contact", id: "contact", path: "/contact" },
           ].map((item, idx) => (
             <button
               key={idx}
               onClick={() => scrollToSection(item.id, item.path)}
-              className="text-sm font-medium text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer"
+              className={`${isMinimized ? "text-[14px]" : "text-[15px]"} font-bold text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer`}
             >
               {item.label}
             </button>
@@ -82,21 +118,28 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
         </nav>
 
         {/* Right Action buttons */}
-        <div className="hidden lg:flex items-center gap-5">
+        <div className={`hidden lg:flex items-center transition-all duration-500 ${
+          isMinimized ? "gap-3 scale-[0.96]" : "gap-5 scale-100"
+        }`}>
           {toggleTheme && (
             <button 
               onClick={toggleTheme}
-              className="p-2 rounded-full hover:bg-brand-surface border border-transparent hover:border-brand-border transition-colors text-brand-text-secondary hover:text-brand-text-primary"
+              className={`inline-flex items-center gap-2 rounded-xl bg-brand-surface/80 text-sm font-black text-brand-text-secondary shadow-sm ring-1 ring-brand-border/70 transition hover:bg-brand-surface hover:text-brand-text-primary ${
+                isMinimized ? "px-3 py-2.5" : "px-4 py-3"
+              }`}
               aria-label="Toggle Theme"
             >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {theme === "dark" ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+              <span>{theme === "dark" ? "Light" : "Dark"}</span>
             </button>
           )}
 
           {userEmail ? (
             <button
               onClick={onOpenApp}
-              className="bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              className={`bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-black rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer ${
+                isMinimized ? "px-5 py-2.5" : "px-6 py-3"
+              }`}
             >
               <span>Open App</span>
               <ArrowRight className="w-4 h-4" />
@@ -105,13 +148,15 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
             <div className="flex items-center gap-3">
               <button 
                 onClick={onTriggerAuth}
-                className="text-sm font-semibold text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer px-2"
+                className="text-sm font-black text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer px-2"
               >
                 Sign In
               </button>
               <button 
                 onClick={onTriggerAuth}
-                className="bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className={`bg-brand-text-primary text-brand-background hover:opacity-90 text-sm font-black rounded-xl transition-all shadow-lg shadow-black/5 flex items-center gap-2 cursor-pointer ${
+                  isMinimized ? "px-5 py-2.5" : "px-6 py-3"
+                }`}
               >
                 <span>Get Started</span>
                 <ArrowRight className="w-4 h-4" />
@@ -144,10 +189,11 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
         <div className="lg:hidden bg-brand-background border-b border-brand-border px-6 py-6 space-y-4 animate-fade-in shadow-xl">
           <div className="flex flex-col gap-4">
             {[
-              { label: "Features", id: "core-features", path: "/features" },
+              { label: "Platform", id: "platform-overview", path: "/platform" },
+              { label: "Features", id: "platform-overview", path: "/features" },
+              { label: "Use Cases", id: "use-cases", path: "/use-cases" },
+              { label: "Architecture", id: "security", path: "/architecture" },
               { label: "Pricing", id: "pricing", path: "/pricing" },
-              { label: "Docs", id: "architecture", path: "/about" },
-              { label: "Contact", id: "contact", path: "/contact" },
             ].map((item, idx) => (
               <button
                 key={idx}

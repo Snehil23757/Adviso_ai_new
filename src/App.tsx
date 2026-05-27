@@ -1,7 +1,6 @@
 import React, { Suspense, lazy, useCallback, useState, useEffect } from "react";
 import Header from "./sections/Header.tsx";
 import Hero from "./sections/Hero.tsx";
-import { ShieldAlert, Lock, CheckCircle } from "lucide-react";
 import Lenis from "lenis";
 import { AnimatePresence, motion } from "motion/react";
 import { initGoogleAnalytics, trackEvent, trackPageView } from "./analytics.ts";
@@ -11,12 +10,8 @@ import { checkoutPlanForId, checkoutPlanForName, type CheckoutPlan } from "./sub
 import type { DashboardTabId, PlanId } from "./subscriptions/permissions.ts";
 
 const Trust = lazy(() => import("./sections/Trust.tsx"));
-const PlatformOverview = lazy(() => import("./sections/PlatformOverview.tsx"));
-const CoreFeatures = lazy(() => import("./sections/CoreFeatures.tsx"));
-const UseCases = lazy(() => import("./sections/UseCases.tsx"));
-const Workflow = lazy(() => import("./sections/Workflow.tsx"));
-const DashboardShowcase = lazy(() => import("./sections/DashboardShowcase.tsx"));
-const Architecture = lazy(() => import("./sections/Architecture.tsx"));
+const LaptopScene = lazy(() => import("./components/LaptopScene.tsx"));
+const CinematicProfilesScene = lazy(() => import("./sections/landing/CinematicProfilesScene.tsx"));
 const Security = lazy(() => import("./sections/Security.tsx"));
 const Pricing = lazy(() => import("./sections/Pricing.tsx"));
 const FinalCTA = lazy(() => import("./sections/FinalCTA.tsx"));
@@ -29,10 +24,13 @@ type ThemeMode = "light" | "dark";
 type ThemePreference = ThemeMode | "system";
 
 const PUBLIC_SECTION_ROUTES: Record<string, string> = {
-  "/features": "core-features",
+  "/platform": "platform-overview",
+  "/features": "platform-overview",
+  "/use-cases": "use-cases",
+  "/architecture": "security",
   "/pricing": "pricing",
-  "/about": "architecture",
-  "/contact": "contact",
+  "/about": "use-cases",
+  "/contact": "pricing",
 };
 
 const APP_ROUTE_TO_TAB: Record<string, DashboardTabId> = {
@@ -94,8 +92,11 @@ function pageTitleForPath(path: string) {
   if (path === "/login") return "Adviso AI - Login";
   if (path === "/register") return "Adviso AI - Register";
   if (isAppRoute(path)) return "Adviso AI - Dashboard";
+  if (path === "/platform") return "Adviso AI - Platform";
   if (path === "/pricing") return "Adviso AI - Pricing";
   if (path === "/features") return "Adviso AI - Features";
+  if (path === "/use-cases") return "Adviso AI - Use Cases";
+  if (path === "/architecture") return "Adviso AI - Architecture";
   return "Adviso AI - Landing";
 }
 
@@ -437,91 +438,23 @@ export default function App() {
           toggleTheme={toggleTheme}
         />
 
-        <main className="relative z-10 w-full overflow-hidden">
+        <main className="relative z-10 w-full">
           <Hero />
 
           <Suspense fallback={<SectionLoader />}>
             <Trust />
-            <PlatformOverview />
-            <CoreFeatures />
-            <UseCases />
-            <Workflow />
-            <DashboardShowcase />
           </Suspense>
 
-          <section id="strategy-portal" className="relative py-24 bg-brand-surface-secondary/50 overflow-hidden border-t border-b border-brand-border">
-            <div className="absolute -bottom-20 right-1/4 w-96 h-96 bg-[var(--brand-primary)]/10 rounded-full blur-[100px] pointer-events-none"></div>
-
-            <div className="w-full px-6 md:px-12 xl:px-24 relative z-10 mx-auto max-w-[2000px]">
-              <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
-                <span className="text-xs font-mono font-bold uppercase tracking-widest text-brand-primary">
-                  Interactive Console
-                </span>
-                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-brand-text-primary leading-tight font-sans">
-                  Strategic Advisory Live
-                </h2>
-                <p className="text-sm sm:text-base text-brand-text-secondary leading-relaxed">
-                  Connect directly with our backend strategic decision simulator. Run custom assessments for startups and enterprises with real explainable indicators.
-                </p>
-              </div>
-
-              <div className="relative rounded-3xl overflow-hidden bg-brand-surface border border-brand-border p-8 sm:p-16 max-w-4xl mx-auto shadow-2xl flex flex-col items-center justify-center min-h-[450px]">
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-transparent pointer-events-none"></div>
-
-                <div className="relative z-10 w-full max-w-lg mx-auto text-center space-y-8">
-                  <div className="mx-auto w-16 h-16 rounded-2xl bg-brand-surface-secondary border border-brand-border flex items-center justify-center text-brand-text-primary shadow-[0_4px_20px_rgba(0,0,0,0.05)] mb-6">
-                    <Lock className="w-8 h-8 text-brand-primary" strokeWidth={1.5} />
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-center gap-2 text-[10px] font-mono font-bold tracking-widest text-brand-primary uppercase bg-brand-primary/10 px-3 py-1.5 rounded-full border border-brand-primary/20 w-max mx-auto">
-                      <ShieldAlert className="w-3.5 h-3.5" />
-                      <span>Secure Enterprise Gateway</span>
-                    </div>
-                    <h3 className="text-2xl sm:text-3xl font-extrabold text-brand-text-primary tracking-tight leading-tight">
-                      Authentication Required
-                    </h3>
-                    <p className="text-sm text-brand-text-secondary leading-relaxed">
-                      Access to the Strategic Advisory Simulator is restricted to verified users. Please sign in to authenticate your workspace and run custom multi-variable assessments.
-                    </p>
-                  </div>
-
-                  <div className="pt-8 border-t border-brand-border/50 flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <button
-                      onClick={() => navigate("/login")}
-                      className="w-full sm:w-auto bg-brand-primary text-white hover:bg-brand-primary/90 text-sm font-bold px-8 py-4 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
-                    >
-                      <span>Sign In to Access</span>
-                    </button>
-                    <button
-                      onClick={() => navigate("/pricing")}
-                      className="w-full sm:w-auto bg-brand-surface hover:bg-brand-surface-secondary text-sm font-semibold text-brand-text-primary px-8 py-4 rounded-xl border border-brand-border shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:shadow-[0_4px_15px_rgba(0,0,0,0.05)] hover:-translate-y-0.5 transition-all"
-                    >
-                      View Enterprise Pricing
-                    </button>
-                  </div>
-
-                  <div className="pt-6 flex justify-center gap-6 text-[11px] font-medium text-brand-text-secondary">
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5 text-brand-primary/70" />
-                      <span>SOC2 Compliant</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5 text-brand-primary/70" />
-                      <span>SSO Ready</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle className="w-3.5 h-3.5 text-brand-primary/70" />
-                      <span>E2E Encrypted</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+          <Suspense fallback={<SectionLoader />}>
+            <section id="platform-overview" className="adviso-scroll-scene bg-[#02040a]">
+              <LaptopScene />
+            </section>
+            <section id="use-cases" className="adviso-scroll-scene bg-[#02040a]">
+              <CinematicProfilesScene />
+            </section>
+          </Suspense>
 
           <Suspense fallback={<SectionLoader />}>
-            <Architecture />
             <Security />
             <Pricing onSelectPlan={goToCheckout} />
             <FinalCTA />

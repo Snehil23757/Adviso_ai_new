@@ -10,9 +10,9 @@ export default function Footer() {
       title: "Platform",
       links: [
         { label: "Core Overview", id: "platform-overview" },
-        { label: "Capability Features", id: "core-features" },
-        { label: "Scenario Simulator", id: "dashboard-showcase" },
-        { label: "Architecture Map", id: "architecture" },
+        { label: "Capability Features", id: "platform-overview" },
+        { label: "Scenario Simulator", id: "use-cases" },
+        { label: "Architecture Map", id: "security" },
       ]
     },
     {
@@ -29,8 +29,8 @@ export default function Footer() {
       links: [
         { label: "About Capital Partners", id: "trust-metrics" },
         { label: "Client Security Audits", id: "security" },
-        { label: "Enterprise Engineering Blog", id: "architecture" },
-        { label: "Technology Alliance Hub", id: "workflow" },
+        { label: "Enterprise Engineering Blog", id: "security" },
+        { label: "Technology Alliance Hub", id: "platform-overview" },
       ]
     },
     {

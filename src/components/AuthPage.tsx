@@ -1,9 +1,25 @@
 import React, { useState } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle, Key, Mail, Moon, ShieldCheck, Sun } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle,
+  Key,
+  Linkedin,
+  Lock,
+  Mail,
+  Moon,
+  Shield,
+  ShieldCheck,
+  Sun,
+  User,
+  Zap,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import favAdv from "../assets/fav_adv.png";
+
+import loginDarkImage from "../assets/login_dark.png";
 import loginScreenImage from "../assets/login_screen_img.png";
 import { useAuth } from "../lib/AuthContext.tsx";
+import Logo from "./Logo.tsx";
 
 type ThemeMode = "light" | "dark";
 type AuthMode = "login" | "register" | "forgot";
@@ -50,6 +66,9 @@ function authErrorMessage(error: unknown, mode: AuthMode) {
   if (code.includes("operation-not-allowed") || rawMessage.toLowerCase().includes("not available")) {
     return "Secure sign-in is not available right now. Please contact support.";
   }
+  if (rawMessage && !rawMessage.toLowerCase().includes("firebase")) {
+    return rawMessage;
+  }
 
   if (mode === "register") return "We could not create your account. Please check your details and try again.";
   if (mode === "forgot") return "We could not send a reset link. Please check the email and try again.";
@@ -63,6 +82,7 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -130,331 +150,451 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
     }
   };
 
-  const pageClass = isDark ? "bg-[#080d18] text-slate-50" : "bg-[#fbfdff] text-slate-950";
-  const panelBorder = isDark ? "border-slate-800" : "border-slate-200/80";
+  const visualImage = isDark ? loginDarkImage : loginScreenImage;
+  const pageClass = isDark ? "bg-[#040b17] text-slate-50" : "bg-[#f7fbff] text-slate-950";
+  const panelBorder = isDark ? "border-white/10" : "border-slate-200/80";
   const mutedText = isDark ? "text-slate-400" : "text-slate-500";
+  const cardClass = isDark
+    ? "border-white/10 bg-[rgba(11,20,36,0.86)] shadow-[0_32px_120px_rgba(0,0,0,0.38)]"
+    : "border-slate-200/80 bg-white/90 shadow-[0_32px_120px_rgba(15,23,42,0.12)]";
   const inputClass = isDark
-    ? "border-slate-700 bg-slate-900/80 text-slate-50 placeholder:text-slate-500 focus:border-blue-400 focus:ring-blue-400/15"
+    ? "border-white/10 bg-white/[0.04] text-slate-50 placeholder:text-slate-500 focus:border-blue-400 focus:ring-blue-400/15"
     : "border-slate-200 bg-white text-slate-950 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500/10";
   const secondaryButtonClass = isDark
-    ? "border-slate-700 bg-slate-900/80 text-slate-100 hover:border-blue-500/60 hover:bg-slate-900"
+    ? "border-white/10 bg-white/[0.04] text-slate-100 hover:border-blue-400/40 hover:bg-white/[0.07]"
     : "border-slate-200 bg-white text-slate-800 hover:border-blue-200 hover:bg-blue-50";
-  const panelTransition = { duration: 0.72, ease: [0.22, 1, 0.36, 1] } as const;
-  const contentTransition = { duration: 0.46, ease: [0.22, 1, 0.36, 1] } as const;
+  const formTitle =
+    mode === "login" ? "Sign in to your workspace" : mode === "register" ? "Create your workspace" : "Reset your password";
+  const formSubtitle =
+    mode === "login"
+      ? "Enter your credentials to access your dashboard"
+      : mode === "register"
+        ? "Create a secure Adviso AI workspace in minutes"
+        : "We will send a secure reset link to your email";
+  const actionText =
+    isSubmitting
+      ? "Processing..."
+      : mode === "login"
+        ? "Sign in"
+        : mode === "register"
+          ? "Create account"
+          : "Send reset link";
+  const panelTransition = { duration: 0.78, ease: [0.16, 1, 0.3, 1] } as const;
+  const itemTransition = { duration: 0.58, ease: [0.16, 1, 0.3, 1] } as const;
+
+  const featureItems = [
+    {
+      icon: Shield,
+      title: "Enterprise grade security",
+      text: "Your data is protected with encrypted authentication and managed access.",
+      tone: "text-blue-500 bg-blue-500/10 border-blue-400/20",
+    },
+    {
+      icon: Zap,
+      title: "Real-time intelligence",
+      text: "Continue into dashboards, scenarios, and predictive workspace insights.",
+      tone: "text-emerald-500 bg-emerald-500/10 border-emerald-400/20",
+    },
+    {
+      icon: User,
+      title: "Built for teams",
+      text: "Collaborate safely across business users, analysts, and founders.",
+      tone: "text-violet-500 bg-violet-500/10 border-violet-400/20",
+    },
+  ];
+
+  const trustItems = [
+    { icon: ShieldCheck, label: "SOC 2 Type II", sub: "Compliant" },
+    { icon: Lock, label: "256-bit SSL", sub: "Encrypted" },
+    { icon: CheckCircle, label: "99.9%", sub: "Uptime" },
+  ];
 
   return (
     <div className={`min-h-screen selection:bg-blue-500/20 ${pageClass}`}>
-      <div className="grid min-h-screen lg:grid-cols-[52%_48%]">
+      <div className="grid min-h-screen lg:grid-cols-[54%_46%]">
         <motion.section
-          className={`relative hidden overflow-hidden border-r ${panelBorder} lg:block`}
+          className={`relative hidden min-h-screen overflow-hidden border-r ${panelBorder} lg:flex`}
           initial={{ opacity: 0, x: -44 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -28 }}
           transition={panelTransition}
         >
           <motion.img
-            src={loginScreenImage}
-            alt="Adviso AI strategic workspace illustration"
-            className={`absolute inset-0 h-full w-full object-cover object-center ${isDark ? "opacity-50" : "opacity-95"}`}
-            initial={{ scale: 1.06 }}
+            src={visualImage}
+            alt="Adviso AI secure intelligence workspace"
+            className="absolute inset-0 h-full w-full object-cover object-center"
+            initial={{ scale: 1.05 }}
             animate={{ scale: 1 }}
-            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
+            fetchPriority="high"
+            decoding="async"
           />
           <div
             className={
               isDark
-                ? "absolute inset-0 bg-[linear-gradient(90deg,rgba(8,13,24,0.95)_0%,rgba(8,13,24,0.72)_36%,rgba(8,13,24,0.35)_100%)]"
-                : "absolute inset-0 bg-[linear-gradient(90deg,rgba(248,251,255,0.92)_0%,rgba(248,251,255,0.74)_34%,rgba(248,251,255,0.12)_100%)]"
+                ? "absolute inset-0 bg-[linear-gradient(90deg,rgba(4,11,23,0.96)_0%,rgba(4,11,23,0.78)_35%,rgba(4,11,23,0.2)_100%)]"
+                : "absolute inset-0 bg-[linear-gradient(90deg,rgba(247,251,255,0.96)_0%,rgba(247,251,255,0.78)_35%,rgba(247,251,255,0.18)_100%)]"
             }
           />
+          <div className={isDark ? "absolute inset-0 bg-[radial-gradient(circle_at_70%_28%,rgba(20,93,255,0.18),transparent_32%)]" : "absolute inset-0 bg-[radial-gradient(circle_at_70%_26%,rgba(20,93,255,0.12),transparent_32%)]"} />
 
-          <motion.button
-            onClick={onBack}
-            className="absolute left-12 top-10 z-20 flex items-center gap-3"
-            initial={{ opacity: 0, y: -14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.16, ...contentTransition }}
-            whileHover={{ x: -2 }}
-          >
-            <img src={favAdv} alt="Adviso AI" className="h-10 w-10 rounded-lg object-cover mix-blend-multiply" />
-            <span className={`text-xl font-black tracking-tight ${isDark ? "text-white" : "text-slate-950"}`}>
-              Adviso <span className="text-blue-500">AI</span>
-            </span>
-          </motion.button>
-
-          <div className="relative z-10 flex min-h-screen flex-col justify-center px-12 xl:px-16">
-            <motion.div
-              className="max-w-[460px] space-y-5"
-              initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: {},
-                visible: { transition: { staggerChildren: 0.12, delayChildren: 0.12 } },
-              }}
-            >
-              <h1 className={`text-4xl font-black leading-[1.08] tracking-tight xl:text-5xl ${isDark ? "text-white" : "text-slate-950"}`}>
-                <motion.span
-                  className="block"
-                  variants={{
-                    hidden: { opacity: 0, x: -36, filter: "blur(6px)" },
-                    visible: { opacity: 1, x: 0, filter: "blur(0px)", transition: contentTransition },
-                  }}
-                >
-                  Initialize Your
-                </motion.span>
-                <motion.span
-                  className="block text-blue-500"
-                  variants={{
-                    hidden: { opacity: 0, x: 36, filter: "blur(6px)" },
-                    visible: { opacity: 1, x: 0, filter: "blur(0px)", transition: contentTransition },
-                  }}
-                >
-                  Strategic Workspace
-                </motion.span>
-              </h1>
-              <motion.p
-                className={`max-w-[420px] text-base font-medium leading-8 ${isDark ? "text-slate-300" : "text-slate-600"}`}
-                variants={{
-                  hidden: { opacity: 0, y: 18 },
-                  visible: { opacity: 1, y: 0, transition: contentTransition },
-                }}
-              >
-                Access a secure workspace for analytics, AI insights, credits, and subscription-aware execution.
-              </motion.p>
-            </motion.div>
-
-            <motion.div
-              className={`absolute bottom-10 left-12 flex items-center gap-8 text-xs font-mono font-semibold xl:left-16 ${isDark ? "text-slate-300" : "text-slate-500"}`}
-              initial={{ opacity: 0, y: 18 }}
+          <div className="relative z-10 flex min-h-screen w-full flex-col px-10 py-8 xl:px-14">
+            <motion.button
+              onClick={onBack}
+              className="w-fit"
+              initial={{ opacity: 0, y: -14 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.48, ...contentTransition }}
+              transition={{ delay: 0.12, ...itemTransition }}
+              whileHover={{ x: -2 }}
             >
-              {["Secure Sign-In", "Verified Sessions", "Protected AI Access"].map((item) => (
-                <span key={item} className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-blue-500" /> {item}
-                </span>
-              ))}
+              <Logo size="lg" className={isDark ? "text-white" : "text-slate-950"} />
+            </motion.button>
+
+            <div className="flex flex-1 flex-col justify-center">
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                variants={{
+                  hidden: {},
+                  visible: { transition: { staggerChildren: 0.12, delayChildren: 0.12 } },
+                }}
+                className="max-w-xl"
+              >
+                <motion.h1
+                  className={`text-5xl font-black leading-[1.05] tracking-tight xl:text-6xl ${isDark ? "text-white" : "text-slate-950"}`}
+                  variants={{
+                    hidden: { opacity: 0, y: 22, filter: "blur(8px)" },
+                    visible: { opacity: 1, y: 0, filter: "blur(0px)", transition: itemTransition },
+                  }}
+                >
+                  Welcome back to{" "}
+                  <span className="block bg-gradient-to-r from-[#145DFF] via-[#2c82ff] to-[#20D7FF] bg-clip-text text-transparent">
+                    Adviso AI
+                  </span>
+                </motion.h1>
+                <motion.p
+                  className={`mt-6 max-w-md text-base font-medium leading-8 ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                  variants={{
+                    hidden: { opacity: 0, y: 18 },
+                    visible: { opacity: 1, y: 0, transition: itemTransition },
+                  }}
+                >
+                  Access your intelligence workspace and continue building data-driven strategies that drive impact.
+                </motion.p>
+
+                <motion.div
+                  className="mt-10 space-y-6"
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+                  }}
+                >
+                  {featureItems.map((item) => {
+                    const FeatureIcon = item.icon;
+                    return (
+                      <motion.div
+                        key={item.title}
+                        className="flex max-w-md gap-5"
+                        variants={{
+                          hidden: { opacity: 0, x: -22 },
+                          visible: { opacity: 1, x: 0, transition: itemTransition },
+                        }}
+                      >
+                        <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border ${item.tone}`}>
+                          <FeatureIcon className="h-7 w-7" />
+                        </div>
+                        <div>
+                          <h3 className={isDark ? "font-black text-white" : "font-black text-slate-950"}>{item.title}</h3>
+                          <p className={`mt-1 text-sm font-medium leading-6 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                            {item.text}
+                          </p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </motion.div>
+              </motion.div>
+            </div>
+
+            <motion.div
+              className={`grid gap-4 rounded-2xl border p-5 backdrop-blur-xl sm:grid-cols-3 ${isDark ? "border-white/10 bg-white/[0.04]" : "border-slate-200/80 bg-white/70"}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.42, ...itemTransition }}
+            >
+              {trustItems.map((item) => {
+                const TrustIcon = item.icon;
+                return (
+                  <div key={item.label} className="flex items-center gap-3">
+                    <TrustIcon className="h-6 w-6 text-blue-500" />
+                    <div>
+                      <p className={`text-sm font-black ${isDark ? "text-white" : "text-slate-950"}`}>{item.label}</p>
+                      <p className={`text-xs font-medium ${mutedText}`}>{item.sub}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </motion.div>
           </div>
         </motion.section>
 
         <motion.section
+          className={
+            isDark
+              ? "relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_48%_20%,rgba(20,93,255,0.18),transparent_34%),#040b17] px-5 py-20"
+              : "relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_48%_20%,rgba(20,93,255,0.1),transparent_34%),#f7fbff] px-5 py-20"
+          }
           initial={{ opacity: 0, x: 44 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 28 }}
           transition={panelTransition}
-          className={
-            isDark
-              ? "relative flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_50%_18%,rgba(59,130,246,0.16),transparent_34%),#080d18] px-6 py-20"
-              : "relative flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_50%_20%,rgba(59,130,246,0.08),transparent_34%),#fbfdff] px-6 py-20"
-          }
         >
-          <motion.button
+          <img
+            src={visualImage}
+            alt=""
+            className={`absolute inset-0 h-full w-full object-cover object-center lg:hidden ${isDark ? "opacity-[0.18]" : "opacity-20"}`}
+            aria-hidden="true"
+          />
+          <div className={isDark ? "absolute inset-0 bg-[#040b17]/84 lg:hidden" : "absolute inset-0 bg-white/72 lg:hidden"} />
+
+          <button
             onClick={onBack}
-            className={`absolute left-6 top-6 flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-bold transition md:left-10 md:top-10 ${
-              isDark ? "text-slate-400 hover:bg-slate-900 hover:text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className={`absolute left-5 top-6 z-20 inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-black transition md:left-10 md:top-10 ${
+              isDark ? "text-slate-300 hover:bg-white/[0.06] hover:text-white" : "text-slate-600 hover:bg-white hover:text-slate-950"
             }`}
-            whileHover={{ x: -3 }}
-            whileTap={{ scale: 0.98 }}
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Website
-          </motion.button>
+            Back to website
+          </button>
 
-          <motion.button
+          <button
             onClick={onToggleTheme}
-            className={`absolute right-6 top-6 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-black transition md:right-10 md:top-10 ${
-              isDark ? "border-slate-700 bg-slate-900 text-slate-100 hover:border-blue-500/60" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+            className={`absolute right-5 top-6 z-20 inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-xs font-black shadow-sm transition md:right-10 md:top-10 ${
+              isDark
+                ? "border-white/10 bg-white/[0.06] text-white hover:border-blue-400/45"
+                : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
             }`}
             aria-label="Toggle login theme"
-            whileHover={{ y: -1 }}
-            whileTap={{ scale: 0.98 }}
           >
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {isDark ? "Light" : "Dark"}
-          </motion.button>
+            {isDark ? "Light mode" : "Dark mode"}
+          </button>
 
-          <div className="w-full max-w-[440px]">
+          <div className="relative z-10 w-full max-w-[540px]">
+            <div className="mb-8 lg:hidden">
+              <Logo size="lg" className={isDark ? "text-white" : "text-slate-950"} />
+            </div>
+
             <AnimatePresence mode="wait">
               <motion.div
                 key={mode}
-                initial={{ opacity: 0, x: mode === "register" ? 28 : -28, filter: "blur(8px)" }}
+                initial={{ opacity: 0, x: mode === "register" ? 26 : -26, filter: "blur(8px)" }}
                 animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, x: mode === "register" ? -28 : 28, filter: "blur(8px)" }}
-                transition={contentTransition}
+                exit={{ opacity: 0, x: mode === "register" ? -26 : 26, filter: "blur(8px)" }}
+                transition={itemTransition}
+                className={`rounded-[2rem] border p-7 backdrop-blur-2xl sm:p-10 ${cardClass}`}
               >
-            <div className="mb-8">
-              <div className="mb-7 flex items-center gap-3 lg:hidden">
-                <img src={favAdv} alt="Adviso AI" className="h-10 w-10 rounded-lg object-cover mix-blend-multiply" />
-                <span className={`text-xl font-black tracking-tight ${isDark ? "text-white" : "text-slate-950"}`}>
-                  Adviso <span className="text-blue-500">AI</span>
-                </span>
-              </div>
-              <h2 className={`text-3xl font-black tracking-tight ${isDark ? "text-white" : "text-slate-950"}`}>
-                {mode === "login" ? "Welcome back" : mode === "register" ? "Create your account" : "Reset password"}
-              </h2>
-              <p className={`mt-3 text-sm font-medium ${mutedText}`}>
-                {mode === "login"
-                  ? "Sign in to access your intelligence console"
-                  : mode === "register"
-                    ? "Use any valid email address or continue with Google"
-                    : "Enter your account email and we will send a reset link"}
-              </p>
-            </div>
+                <div className="mb-8">
+                  <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#145DFF] to-[#0B3FCC] text-white shadow-lg shadow-blue-600/25">
+                    <Lock className="h-8 w-8" />
+                  </div>
+                  <h2 className={`text-3xl font-black tracking-tight ${isDark ? "text-white" : "text-slate-950"}`}>
+                    {formTitle}
+                  </h2>
+                  <p className={`mt-3 text-base font-medium ${mutedText}`}>{formSubtitle}</p>
+                </div>
 
-            <motion.button
-              type="button"
-              onClick={handleGoogle}
-              disabled={isSubmitting || !authReady}
-              className={`mb-6 flex h-12 w-full items-center justify-center gap-3 rounded-xl border text-sm font-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${secondaryButtonClass}`}
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.985 }}
-            >
-              <span className="text-base font-black text-blue-500">G</span>
-              {mode === "register" ? "Sign up with Google" : "Continue with Google"}
-            </motion.button>
+                {mode !== "forgot" && (
+                  <>
+                    <div className="mb-6 flex items-center gap-4">
+                      <div className={`h-px flex-1 ${isDark ? "bg-white/10" : "bg-slate-200"}`} />
+                      <span className={`font-mono text-[10px] font-black uppercase tracking-[0.22em] ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                        Or continue with
+                      </span>
+                      <div className={`h-px flex-1 ${isDark ? "bg-white/10" : "bg-slate-200"}`} />
+                    </div>
 
-            <div className="mb-6 flex items-center gap-4">
-              <div className={`h-px flex-1 ${isDark ? "bg-slate-800" : "bg-slate-200"}`} />
-              <span className={`font-mono text-[10px] font-black uppercase tracking-[0.16em] ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                Or use email
-              </span>
-              <div className={`h-px flex-1 ${isDark ? "bg-slate-800" : "bg-slate-200"}`} />
-            </div>
-
-            <motion.form onSubmit={handleSubmit} className="space-y-5" layout>
-              {mode === "register" && (
-                <label className="block">
-                  <span className={`mb-2 block font-mono text-[11px] font-black uppercase tracking-[0.14em] ${mutedText}`}>Full Name</span>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(event) => setFullName(event.target.value)}
-                    required
-                    placeholder="Jane Doe"
-                    className={`h-14 w-full rounded-xl px-4 text-sm font-semibold shadow-sm outline-none transition focus:ring-4 ${inputClass}`}
-                  />
-                </label>
-              )}
-
-              <label className="block">
-                <span className={`mb-2 flex items-center gap-2 font-mono text-[11px] font-black uppercase tracking-[0.14em] ${mutedText}`}>
-                  <Mail className="h-3.5 w-3.5" />
-                  Email Address
-                </span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                  placeholder="name@company.com"
-                  className={`h-14 w-full rounded-xl px-4 text-sm font-semibold shadow-sm outline-none transition focus:ring-4 ${inputClass}`}
-                />
-              </label>
-
-              {mode !== "forgot" && (
-                <label className="block">
-                  <span className={`mb-2 flex items-center justify-between font-mono text-[11px] font-black uppercase tracking-[0.14em] ${mutedText}`}>
-                    <span className="flex items-center gap-2"><Key className="h-3.5 w-3.5" /> Password</span>
-                    {mode === "login" && (
-                      <button type="button" onClick={() => switchMode("forgot")} className="font-sans text-xs font-bold normal-case tracking-normal text-blue-500 hover:underline">
-                        Forgot password?
+                    <div className="mb-6 grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={handleGoogle}
+                        disabled={isSubmitting || !authReady}
+                        className={`flex h-12 items-center justify-center gap-2 rounded-xl border text-sm font-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${secondaryButtonClass}`}
+                      >
+                        <span className="text-base font-black text-blue-500">G</span>
+                        Google
                       </button>
-                    )}
-                  </span>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    required
-                    minLength={8}
-                    placeholder="At least 8 characters"
-                    className={`h-14 w-full rounded-xl px-4 text-sm font-semibold shadow-sm outline-none transition focus:ring-4 ${inputClass}`}
-                  />
-                </label>
-              )}
+                      <div className={`flex h-12 items-center justify-center gap-2 rounded-xl border text-sm font-black opacity-60 ${secondaryButtonClass}`}>
+                        <Linkedin className="h-4 w-4 text-blue-500" />
+                        LinkedIn
+                      </div>
+                    </div>
+                  </>
+                )}
 
-              {mode === "register" && (
-                <label className="block">
-                  <span className={`mb-2 block font-mono text-[11px] font-black uppercase tracking-[0.14em] ${mutedText}`}>Confirm Password</span>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    required
-                    minLength={8}
-                    placeholder="Repeat password"
-                    className={`h-14 w-full rounded-xl px-4 text-sm font-semibold shadow-sm outline-none transition focus:ring-4 ${inputClass}`}
-                  />
-                </label>
-              )}
+                <motion.form onSubmit={handleSubmit} className="space-y-5" layout>
+                  {mode === "register" && (
+                    <label className="block">
+                      <span className={`mb-2 block text-sm font-black ${isDark ? "text-slate-300" : "text-slate-700"}`}>Full name</span>
+                      <div className="relative">
+                        <User className={`absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${mutedText}`} />
+                        <input
+                          type="text"
+                          value={fullName}
+                          onChange={(event) => setFullName(event.target.value)}
+                          required
+                          placeholder="Jane Doe"
+                          className={`h-14 w-full rounded-xl border py-0 pl-12 pr-4 text-sm font-semibold outline-none transition focus:ring-4 ${inputClass}`}
+                        />
+                      </div>
+                    </label>
+                  )}
 
-              {error && (
-                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-500">
-                  {error}
+                  <label className="block">
+                    <span className={`mb-2 block text-sm font-black ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                      {mode === "register" ? "Email address" : "Corporate email"}
+                    </span>
+                    <div className="relative">
+                      <Mail className={`absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${mutedText}`} />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        required
+                        placeholder="name@company.com"
+                        className={`h-14 w-full rounded-xl border py-0 pl-12 pr-4 text-sm font-semibold outline-none transition focus:ring-4 ${inputClass}`}
+                      />
+                    </div>
+                  </label>
+
+                  {mode !== "forgot" && (
+                    <label className="block">
+                      <span className={`mb-2 flex items-center justify-between text-sm font-black ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                        Password
+                        {mode === "login" && (
+                          <button
+                            type="button"
+                            onClick={() => switchMode("forgot")}
+                            className="text-xs font-black text-blue-500 hover:underline"
+                          >
+                            Forgot password?
+                          </button>
+                        )}
+                      </span>
+                      <div className="relative">
+                        <Key className={`absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${mutedText}`} />
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          required
+                          minLength={8}
+                          placeholder="At least 8 characters"
+                          className={`h-14 w-full rounded-xl border py-0 pl-12 pr-4 text-sm font-semibold outline-none transition focus:ring-4 ${inputClass}`}
+                        />
+                      </div>
+                    </label>
+                  )}
+
+                  {mode === "register" && (
+                    <label className="block">
+                      <span className={`mb-2 block text-sm font-black ${isDark ? "text-slate-300" : "text-slate-700"}`}>Confirm password</span>
+                      <div className="relative">
+                        <Lock className={`absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${mutedText}`} />
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                          required
+                          minLength={8}
+                          placeholder="Repeat password"
+                          className={`h-14 w-full rounded-xl border py-0 pl-12 pr-4 text-sm font-semibold outline-none transition focus:ring-4 ${inputClass}`}
+                        />
+                      </div>
+                    </label>
+                  )}
+
+                  {mode === "login" && (
+                    <div className="flex items-center justify-between">
+                      <label className={`flex items-center gap-3 text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                        <input
+                          type="checkbox"
+                          checked={rememberMe}
+                          onChange={(event) => setRememberMe(event.target.checked)}
+                          className="h-4 w-4 rounded border-blue-300 accent-blue-600"
+                        />
+                        Remember me
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setNotice("For help, email support@adviso.ai from your registered account.")}
+                        className="text-sm font-black text-blue-500 hover:underline"
+                      >
+                        Need help?
+                      </button>
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-500">
+                      {error}
+                    </div>
+                  )}
+                  {notice && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-500">
+                      {notice}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !authReady}
+                    className="flex h-14 w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#145DFF] to-[#0B3FCC] text-sm font-black text-white shadow-[0_18px_42px_rgba(20,93,255,0.34)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {actionText}
+                    {!isSubmitting && <ArrowRight className="h-4 w-4" />}
+                  </button>
+                </motion.form>
+
+                {!authReady && (
+                  <div className={`mt-5 rounded-xl border px-4 py-3 text-xs leading-5 ${isDark ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                    Secure sign-in is not available right now. Please contact support.
+                  </div>
+                )}
+
+                <div className={`mt-8 text-center text-sm font-medium ${mutedText}`}>
+                  {mode === "login" ? (
+                    <p>
+                      Do not have a workspace?{" "}
+                      <button onClick={() => switchMode("register")} className="font-black text-blue-500 hover:underline">
+                        Request access
+                      </button>
+                    </p>
+                  ) : mode === "register" ? (
+                    <p>
+                      Already have a workspace?{" "}
+                      <button onClick={() => switchMode("login")} className="font-black text-blue-500 hover:underline">
+                        Sign in
+                      </button>
+                    </p>
+                  ) : (
+                    <p>
+                      Remembered your password?{" "}
+                      <button onClick={() => switchMode("login")} className="font-black text-blue-500 hover:underline">
+                        Back to sign in
+                      </button>
+                    </p>
+                  )}
                 </div>
-              )}
-              {notice && (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-500">
-                  {notice}
-                </div>
-              )}
-
-              <motion.button
-                type="submit"
-                disabled={isSubmitting || !authReady}
-                className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white shadow-[0_16px_34px_rgba(37,99,235,0.28)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                whileHover={{ y: -2 }}
-                whileTap={{ scale: 0.985 }}
-              >
-                {isSubmitting
-                  ? "Processing..."
-                  : mode === "login"
-                    ? "Sign In"
-                    : mode === "register"
-                      ? "Create Account"
-                    : "Send Reset Link"}
-                {!isSubmitting && <ArrowRight className="h-4 w-4" />}
-              </motion.button>
-            </motion.form>
-
-            {!authReady && (
-              <div className={`mt-5 rounded-xl border px-4 py-3 text-xs leading-5 ${isDark ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                Secure sign-in is not available right now. Please contact support.
-              </div>
-            )}
-
-            <div className={`mt-8 text-center text-sm font-medium ${mutedText}`}>
-              {mode === "login" ? (
-                <p>
-                  Do not have a workspace?{" "}
-                  <button onClick={() => switchMode("register")} className="font-black text-blue-500 hover:underline">
-                    Create account
-                  </button>
-                </p>
-              ) : mode === "register" ? (
-                <p>
-                  Already initialized?{" "}
-                  <button onClick={() => switchMode("login")} className="font-black text-blue-500 hover:underline">
-                    Sign in
-                  </button>
-                </p>
-              ) : (
-                <p>
-                  Remembered your password?{" "}
-                  <button onClick={() => switchMode("login")} className="font-black text-blue-500 hover:underline">
-                    Back to sign in
-                  </button>
-                </p>
-              )}
-            </div>
-
-            <div className={`mx-auto mt-10 flex max-w-sm items-start justify-center gap-2 text-center text-xs leading-5 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-              <span>Your credentials are protected by encrypted, managed authentication. Adviso AI never stores plaintext passwords.</span>
-            </div>
               </motion.div>
             </AnimatePresence>
+
+            <div className={`mx-auto mt-8 flex max-w-md items-start justify-center gap-3 text-center text-xs leading-5 ${mutedText}`}>
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
+              <span>
+                By continuing, you agree to the Enterprise License Agreement and Adviso AI workspace terms of service.
+              </span>
+            </div>
           </div>
         </motion.section>
       </div>
