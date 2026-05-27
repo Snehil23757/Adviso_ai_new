@@ -28,8 +28,8 @@ gcloud run worker-pools deploy $WorkerPoolName `
   --instances $Instances `
   --cpu $Cpu `
   --memory $Memory `
-  --command python `
-  --args "-m,app.workers.run_celery" `
+  '--command=python' `
+  '--args=-m,app.workers.run_celery' `
   --env-vars-file $envPath
 
 Write-Output "Worker pool deploy complete."
