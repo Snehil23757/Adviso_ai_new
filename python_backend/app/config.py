@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     firebase_project_id: str = "advisoai-497313"
     firebase_credentials_json: str = ""
     firebase_credentials_path: str = ""
-    backend_host: str = "127.0.0.1"
+    backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     rate_limit_per_minute: int = 120
     upload_rate_limit_per_minute: int = 10

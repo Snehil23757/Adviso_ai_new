@@ -8,18 +8,22 @@ from app.config import get_settings
 
 
 settings = get_settings()
+redis_url = settings.redis_url.strip()
+
+if not redis_url:
+    raise RuntimeError("REDIS_URL is required for Celery broker and result backend.")
 
 
 def _ssl_options() -> dict | None:
-    if settings.redis_url.startswith("rediss://"):
+    if redis_url.startswith("rediss://"):
         return {"ssl_cert_reqs": ssl.CERT_REQUIRED}
     return None
 
 
 celery_app = Celery(
     "adviso_ai",
-    broker=settings.redis_url or "redis://localhost:6379/0",
-    backend=settings.redis_url or "redis://localhost:6379/0",
+    broker=redis_url,
+    backend=redis_url,
     include=["app.workers.tasks"],
 )
 
