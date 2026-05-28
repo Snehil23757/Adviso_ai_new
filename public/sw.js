@@ -1,4 +1,4 @@
-const CACHE_NAME = "adviso-static-v1";
+const CACHE_NAME = "adviso-static-v2";
 const STATIC_ASSET = /\.(?:js|css|png|jpg|jpeg|webp|svg|ico|woff2?)$/i;
 
 self.addEventListener("install", (event) => {
@@ -42,7 +42,7 @@ self.addEventListener("fetch", (event) => {
         return response;
       });
 
-      return cached || fresh;
+      return fresh.catch(() => cached);
     }),
   );
 });
