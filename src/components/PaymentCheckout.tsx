@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
-  ClipboardList,
   CreditCard,
   HelpCircle,
   IndianRupee,
@@ -16,7 +15,6 @@ import {
 import { motion } from "motion/react";
 
 import { apiFailureMessage, authorizedFetch, readApiJson } from "../config";
-import razorpayUpiQr from "../assets/images/razorpay_upi_qr.jpeg";
 import { useAuth } from "../lib/AuthContext.tsx";
 import { usePermissions } from "../subscriptions/SubscriptionProvider";
 import type { PlanId } from "../subscriptions/permissions";
@@ -627,9 +625,9 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
                 <div className="p-6 sm:p-8">
                   <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                     <div>
-                      <h3 className="text-lg font-black text-slate-950 dark:text-white">Pay using UPI</h3>
+                      <h3 className="text-lg font-black text-slate-950 dark:text-white">Pay inside Razorpay checkout</h3>
                       <p className="mt-2 max-w-md text-sm font-medium leading-6 text-slate-600 dark:text-slate-400">
-                        Scan the QR code with any UPI app, or continue to Razorpay to use UPI ID or card details.
+                        We create an order first, then Razorpay shows order-bound UPI, QR, and card options. This keeps your payment linked to your workspace.
                       </p>
                     </div>
                     <div className="flex w-fit items-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/5">
@@ -646,61 +644,42 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
 
                   <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/30 sm:p-7">
                     <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-center">
-                      <div>
-                        <div className="mx-auto w-48 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_20px_60px_rgba(15,23,42,0.12)] dark:border-white/10">
-                          <img
-                            src={razorpayUpiQr}
-                            alt="Razorpay UPI QR code for Adviso AI"
-                            className="block h-auto w-full"
-                            decoding="async"
-                          />
+                      <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-[2rem] border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 shadow-[0_20px_60px_rgba(15,23,42,0.10)] dark:border-blue-400/20 dark:from-blue-500/10 dark:via-slate-950 dark:to-cyan-400/10">
+                        <div className="relative flex h-28 w-28 items-center justify-center rounded-3xl bg-gradient-to-br from-[#145DFF] to-[#0B3FCC] text-white shadow-[0_24px_70px_rgba(20,93,255,0.35)]">
+                          <QrCode className="h-12 w-12" />
+                          <span className="absolute -right-2 -top-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-white text-[#145DFF] shadow-lg">
+                            <Lock className="h-4 w-4" />
+                          </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (navigator.clipboard) void navigator.clipboard.writeText("advisoai@razorpay").catch(() => undefined);
-                          }}
-                          className="mx-auto mt-4 flex max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
-                        >
-                          UPI ID: advisoai@razorpay <ClipboardList className="h-3.5 w-3.5" />
-                        </button>
                       </div>
 
                       <div className="space-y-5">
-                        <h4 className="text-lg font-black text-slate-950 dark:text-white">Scan QR code</h4>
+                        <h4 className="text-lg font-black text-slate-950 dark:text-white">Order-bound payment</h4>
                         <div className="space-y-4">
                           <div className="flex items-center gap-3 text-sm font-bold text-slate-700 dark:text-slate-300">
-                            <Smartphone className="h-5 w-5 text-blue-600 dark:text-blue-300" />
-                            Open any UPI app
+                            <QrCode className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+                            Razorpay generates the QR after your order is created
                           </div>
                           <div className="flex items-center gap-3 text-sm font-bold text-slate-700 dark:text-slate-300">
-                            <QrCode className="h-5 w-5 text-blue-600 dark:text-blue-300" />
-                            Scan the QR code
+                            <Smartphone className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+                            UPI, app, and card payments stay inside the secure popup
                           </div>
                           <div className="flex items-center gap-3 text-sm font-bold text-slate-700 dark:text-slate-300">
                             <IndianRupee className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
-                            Complete payment for {amountLabel}
+                            Amount locked to {amountLabel}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="my-7 flex items-center gap-4 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                      <span className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
-                      OR
-                      <span className="h-px flex-1 bg-slate-200 dark:bg-white/10" />
-                    </div>
-
-                    <label className="mb-2 block text-sm font-black text-slate-800 dark:text-slate-200" htmlFor="upi-id">
-                      Enter UPI ID
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
-                      <input
-                        id="upi-id"
-                        type="text"
-                        placeholder="example@upi"
-                        className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-slate-950/50 dark:text-white"
-                      />
+                    <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+                      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center">
+                        <div>
+                          <p className="text-sm font-black text-slate-900 dark:text-white">Ready to pay {amountLabel}</p>
+                          <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                            Complete payment only in the Razorpay popup so activation can be verified automatically.
+                          </p>
+                        </div>
                       <button
                         type="submit"
                         disabled={isProcessing}
@@ -709,9 +688,10 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
                         <Lock className="h-4 w-4" />
                         {isProcessing ? "Opening..." : "Pay Now"}
                       </button>
+                      </div>
                     </div>
                     <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                      Razorpay checkout opens next, keeping UPI, QR, and card details inside its secure payment window.
+                      Direct UPI transfers are not supported for plan activation because they cannot be safely linked to your workspace.
                     </p>
                   </div>
 
