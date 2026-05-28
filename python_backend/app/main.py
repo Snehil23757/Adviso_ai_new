@@ -42,6 +42,7 @@ from app.models import (
     JobResponse,
     MeResponse,
     PaymentPreferenceUpdate,
+    PaymentStatusResponse,
     PasswordResetEmailRequest,
     PasswordResetEmailResponse,
     ProfitRequest,
@@ -107,6 +108,7 @@ from app.saas import (
     get_plan,
     log_usage,
     mark_razorpay_payment_status,
+    payment_status_payload,
     record_payment_webhook_event,
     require_feature,
     session_payload,
@@ -655,7 +657,7 @@ async def razorpay_webhook(request: Request) -> dict:
             return {"success": True, "processed": False, "reason": "missing_order_id"}
 
         if event_name in {"payment.authorized", "payment.failed"}:
-            status = "authorized" if event_name == "payment.authorized" else "failed"
+            status = "processing" if event_name == "payment.authorized" else "failed"
             local_payment = mark_razorpay_payment_status(
                 razorpay_order_id=razorpay_order_id,
                 razorpay_payment_id=razorpay_payment_id,
@@ -764,7 +766,15 @@ def create_order(payload: CreateOrderRequest, user: dict = Depends(get_current_u
         order_id=order["id"],
         amount=order["amount"],
         currency=order["currency"],
+        payment_status="pending",
     )
+
+
+@app.get("/api/payments/{razorpay_order_id}/status", response_model=PaymentStatusResponse)
+def payment_status(razorpay_order_id: str, user: dict = Depends(get_current_user)) -> PaymentStatusResponse:
+    if not razorpay_order_id.startswith("order_"):
+        raise HTTPException(status_code=400, detail="Invalid payment order id.")
+    return PaymentStatusResponse(**payment_status_payload(user, razorpay_order_id))
 
 
 @app.post("/api/verify-payment", response_model=VerifyPaymentResponse)

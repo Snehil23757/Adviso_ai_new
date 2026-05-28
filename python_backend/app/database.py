@@ -568,17 +568,28 @@ def initialize_database() -> None:
         plan_id TEXT REFERENCES plans(id),
         amount INTEGER NOT NULL,
         currency TEXT NOT NULL DEFAULT 'INR',
-        payment_status TEXT NOT NULL DEFAULT 'created',
+        payment_status TEXT NOT NULL DEFAULT 'pending',
         razorpay_order_id TEXT NOT NULL,
         razorpay_payment_id TEXT,
         razorpay_signature TEXT,
+        status_detail TEXT NOT NULL DEFAULT '',
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        expires_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS status_detail TEXT NOT NULL DEFAULT '';
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE payments ALTER COLUMN payment_status SET DEFAULT 'pending';
 
     CREATE INDEX IF NOT EXISTS idx_payments_user_created ON payments(user_id, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_order_id ON payments(razorpay_order_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_payment_id ON payments(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_payments_status_created ON payments(payment_status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_payments_user_status_created ON payments(user_id, payment_status, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS payment_webhook_events (
         id BIGSERIAL PRIMARY KEY,

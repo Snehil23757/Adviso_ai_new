@@ -41,19 +41,41 @@ export function apiFailureMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-export async function authorizedFetch(path: string, init: RequestInit = {}) {
+async function authHeaders(init: RequestInit, forceRefresh = false) {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
   }
 
-  const token = await auth?.currentUser?.getIdToken();
+  const token = await auth?.currentUser?.getIdToken(forceRefresh);
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  return fetch(apiUrl(path), {
+  return headers;
+}
+
+export async function refreshAuthToken() {
+  return auth?.currentUser?.getIdToken(true);
+}
+
+export async function authorizedFetch(path: string, init: RequestInit = {}) {
+  const firstResponse = await fetch(apiUrl(path), {
     ...init,
-    headers,
+    headers: await authHeaders(init),
   });
+
+  if (firstResponse.status !== 401 || !auth?.currentUser) {
+    return firstResponse;
+  }
+
+  try {
+    await auth.currentUser.reload();
+    return await fetch(apiUrl(path), {
+      ...init,
+      headers: await authHeaders(init, true),
+    });
+  } catch {
+    return firstResponse;
+  }
 }

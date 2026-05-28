@@ -436,16 +436,44 @@ def log_usage(user_id: int | None, endpoint: str, request_type: str, tokens_used
         return
 
 
+SUCCESS_PAYMENT_STATUSES = {"success", "paid"}
+TERMINAL_PAYMENT_STATUSES = SUCCESS_PAYMENT_STATUSES | {
+    "failed",
+    "refunded",
+    "mismatched",
+    "amount_mismatch",
+    "order_amount_mismatch",
+    "order_owner_mismatch",
+}
+
+
+def public_payment_state(payment_status: str) -> str:
+    normalized = (payment_status or "").lower()
+    if normalized in SUCCESS_PAYMENT_STATUSES:
+        return "success"
+    if normalized in {"failed", "mismatched", "amount_mismatch", "order_amount_mismatch", "order_owner_mismatch"}:
+        return "failed"
+    if normalized == "refunded":
+        return "refunded"
+    if normalized in {"processing", "authorized", "captured", "verification_incomplete", "order_verification_incomplete"}:
+        return "processing"
+    return "pending"
+
+
 def create_pending_payment(user_id: int, plan_id: str, order_id: str, amount: int, currency: str) -> None:
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO payments (user_id, plan_id, amount, currency, payment_status, razorpay_order_id)
-            VALUES (%s, %s, %s, %s, 'created', %s)
+            INSERT INTO payments (
+                user_id, plan_id, amount, currency, payment_status, razorpay_order_id,
+                expires_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, 'pending', %s, NOW() + INTERVAL '30 minutes', NOW())
             ON CONFLICT (razorpay_order_id) DO UPDATE SET
                 amount = EXCLUDED.amount,
                 currency = EXCLUDED.currency,
-                plan_id = EXCLUDED.plan_id
+                plan_id = EXCLUDED.plan_id,
+                updated_at = NOW()
             """,
             (user_id, plan_id, amount, currency, order_id),
         )
@@ -533,7 +561,7 @@ def mark_razorpay_payment_status(
         if not payment:
             return None
 
-        if payment.get("payment_status") == "paid":
+        if payment.get("payment_status") in SUCCESS_PAYMENT_STATUSES:
             return normalize_record(payment)
 
         row = conn.execute(
@@ -541,7 +569,8 @@ def mark_razorpay_payment_status(
             UPDATE payments
             SET payment_status = %s,
                 razorpay_payment_id = COALESCE(NULLIF(%s, ''), razorpay_payment_id),
-                razorpay_signature = COALESCE(NULLIF(%s, ''), razorpay_signature)
+                razorpay_signature = COALESCE(NULLIF(%s, ''), razorpay_signature),
+                updated_at = NOW()
             WHERE id = %s
             RETURNING *
             """,
@@ -565,6 +594,7 @@ def activate_subscription_from_payment(
             SELECT * FROM payments
             WHERE user_id = %s AND razorpay_order_id = %s
             LIMIT 1
+            FOR UPDATE
             """,
             (user_id, razorpay_order_id),
         ).fetchone()
@@ -572,7 +602,7 @@ def activate_subscription_from_payment(
         if not payment:
             raise HTTPException(status_code=404, detail="Payment order was not found for this user.")
 
-        if payment.get("payment_status") == "paid" and payment.get("razorpay_payment_id") == razorpay_payment_id:
+        if payment.get("payment_status") in SUCCESS_PAYMENT_STATUSES and payment.get("razorpay_payment_id") == razorpay_payment_id:
             user = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
             return normalize_record(user) or {}
 
@@ -582,7 +612,8 @@ def activate_subscription_from_payment(
                 UPDATE payments
                 SET payment_status = %s,
                     razorpay_payment_id = %s,
-                    razorpay_signature = %s
+                    razorpay_signature = %s,
+                    updated_at = NOW()
                 WHERE id = %s
                 """,
                 (status, razorpay_payment_id, razorpay_signature, payment["id"]),
@@ -644,9 +675,10 @@ def activate_subscription_from_payment(
         conn.execute(
             """
             UPDATE payments
-            SET payment_status = 'paid',
+            SET payment_status = 'success',
                 razorpay_payment_id = %s,
-                razorpay_signature = %s
+                razorpay_signature = %s,
+                updated_at = NOW()
             WHERE id = %s
             """,
             (razorpay_payment_id, razorpay_signature, payment["id"]),
@@ -693,6 +725,55 @@ def activate_subscription_from_payment(
         ).fetchone()
         conn.commit()
         return normalize_record(user) or {}
+
+
+def payment_status_payload(user: dict[str, Any], razorpay_order_id: str) -> dict[str, Any]:
+    with get_db() as conn:
+        payment = conn.execute(
+            """
+            SELECT *
+            FROM payments
+            WHERE user_id = %s AND razorpay_order_id = %s
+            LIMIT 1
+            """,
+            (user["id"], razorpay_order_id),
+        ).fetchone()
+
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment order was not found for this user.")
+
+    payment_record = normalize_record(payment) or {}
+    payment_status = str(payment_record.get("payment_status") or "pending")
+    public_status = public_payment_state(payment_status)
+    subscription = current_subscription_for_user(int(user["id"]))
+    subscription_active = bool(
+        subscription
+        and subscription.get("status") == "active"
+        and str(subscription.get("razorpay_order_id") or "") == razorpay_order_id
+    )
+
+    if subscription_active and public_status != "success":
+        public_status = "success"
+
+    return {
+        "success": True,
+        "order_id": razorpay_order_id,
+        "status": public_status,
+        "payment_status": "success" if payment_status == "paid" else payment_status,
+        "payment_id": payment_record.get("razorpay_payment_id") or "",
+        "plan_id": payment_record.get("plan_id") or "",
+        "amount": int(payment_record.get("amount") or 0),
+        "currency": payment_record.get("currency") or "INR",
+        "subscription_active": subscription_active,
+        "session": session_payload(user) if public_status == "success" else {},
+        "message": (
+            "Payment verified and subscription is active."
+            if public_status == "success"
+            else "Payment is still being confirmed by Razorpay."
+            if public_status in {"pending", "processing"}
+            else "Payment could not be completed."
+        ),
+    }
 
 
 def admin_list(table_name: str, limit: int = 100) -> list[dict[str, Any]]:

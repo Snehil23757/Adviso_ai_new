@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -46,6 +46,16 @@ interface VerifyPaymentResponse {
   order_id: string;
   payment_id: string;
   session?: unknown;
+}
+
+interface PaymentStatusResponse {
+  success: boolean;
+  order_id: string;
+  status: "pending" | "processing" | "success" | "failed" | "refunded" | string;
+  payment_status: string;
+  payment_id?: string;
+  subscription_active?: boolean;
+  message?: string;
 }
 
 interface RazorpaySuccessResponse {
@@ -130,8 +140,17 @@ function paymentErrorMessage(error: unknown) {
   if (/http 5\d\d/i.test(message) || /backend request failed/i.test(message)) {
     return "Payment service is temporarily unavailable. Please try again in a moment.";
   }
+  if (/invalid or expired authentication session/i.test(message)) {
+    return "Your payment may still be processing. Please sign in again if needed; Adviso AI will recover the payment from Razorpay automatically.";
+  }
   if (/cancelled/i.test(message)) return "Payment was cancelled before completion.";
   return message;
+}
+
+const CHECKOUT_STORAGE_KEY = "adviso_pending_checkout";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: PaymentCheckoutProps) {
@@ -141,13 +160,75 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
   const [success, setSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [paymentId, setPaymentId] = useState("");
+  const [checkoutMessage, setCheckoutMessage] = useState("");
 
   const targetPlanId = useMemo(() => plan.id || planIdFromName(plan.name), [plan.id, plan.name]);
   const amountPaise = validAmountPaise(plan.amountPaise);
   const amountLabel = amountPaise ? formatInrFromPaise(amountPaise) : "Unavailable";
   const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
+  const checkoutStorageKey = user?.uid ? `${CHECKOUT_STORAGE_KEY}:${user.uid}` : CHECKOUT_STORAGE_KEY;
+
+  const clearPendingCheckout = () => {
+    try {
+      window.localStorage.removeItem(checkoutStorageKey);
+    } catch {
+      // Ignore storage failures; payment state still lives on the backend.
+    }
+  };
+
+  const rememberPendingCheckout = (orderId: string) => {
+    try {
+      window.localStorage.setItem(
+        checkoutStorageKey,
+        JSON.stringify({
+          orderId,
+          planId: targetPlanId,
+          createdAt: Date.now(),
+        }),
+      );
+    } catch {
+      // Browser storage is only a recovery helper.
+    }
+  };
+
+  const completeFromStatus = async (status: PaymentStatusResponse) => {
+    setPaymentId(status.payment_id || "");
+    await refreshSubscription({ notify: true });
+    clearPendingCheckout();
+    setSuccess(true);
+  };
+
+  const checkPaymentStatus = async (orderId: string) => {
+    const response = await authorizedFetch(`/api/payments/${encodeURIComponent(orderId)}/status`);
+    return readApiJson<PaymentStatusResponse>(response);
+  };
+
+  const pollPaymentStatus = async (orderId: string, timeoutMs = 120_000) => {
+    const startedAt = Date.now();
+    let lastStatus: PaymentStatusResponse | null = null;
+    setCheckoutMessage("Confirming payment with Razorpay...");
+
+    while (Date.now() - startedAt < timeoutMs) {
+      lastStatus = await checkPaymentStatus(orderId);
+      if (lastStatus.status === "success" || lastStatus.subscription_active) {
+        await completeFromStatus(lastStatus);
+        return;
+      }
+      if (lastStatus.status === "failed" || lastStatus.status === "refunded") {
+        clearPendingCheckout();
+        throw new Error(lastStatus.message || "Payment could not be completed.");
+      }
+      await sleep(3000);
+    }
+
+    throw new Error(
+      lastStatus?.message ||
+        "Payment is still being confirmed by Razorpay. You can return to the dashboard and the plan will update automatically after webhook verification.",
+    );
+  };
 
   const verifyPayment = async (response: RazorpaySuccessResponse) => {
+    setCheckoutMessage("Verifying payment securely...");
     const verifyResponse = await authorizedFetch("/api/verify-payment", {
       method: "POST",
       body: JSON.stringify(response),
@@ -155,9 +236,53 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
     const verification = await readApiJson<VerifyPaymentResponse>(verifyResponse);
     if (!verification.success) throw new Error("Payment verification failed.");
     setPaymentId(verification.payment_id);
+    clearPendingCheckout();
     await refreshSubscription({ notify: true });
     setSuccess(true);
   };
+
+  useEffect(() => {
+    if (!user || success) return;
+
+    let cancelled = false;
+    const recoverPayment = async () => {
+      try {
+        const raw = window.localStorage.getItem(checkoutStorageKey);
+        if (!raw) return;
+        const pending = JSON.parse(raw) as { orderId?: string; planId?: string; createdAt?: number };
+        if (!pending.orderId || pending.planId !== targetPlanId) return;
+        if (pending.createdAt && Date.now() - pending.createdAt > 45 * 60 * 1000) {
+          clearPendingCheckout();
+          return;
+        }
+
+        setIsProcessing(true);
+        setCheckoutMessage("Recovering payment status...");
+        const status = await checkPaymentStatus(pending.orderId);
+        if (cancelled) return;
+        if (status.status === "success" || status.subscription_active) {
+          await completeFromStatus(status);
+          return;
+        }
+        if (status.status === "failed" || status.status === "refunded") {
+          clearPendingCheckout();
+          setErrorMessage(status.message || "Previous payment attempt could not be completed.");
+        }
+      } catch {
+        // Recovery is best-effort; the normal checkout path can still proceed.
+      } finally {
+        if (!cancelled) {
+          setIsProcessing(false);
+          setCheckoutMessage("");
+        }
+      }
+    };
+
+    void recoverPayment();
+    return () => {
+      cancelled = true;
+    };
+  }, [checkoutStorageKey, success, targetPlanId, user]);
 
   const startCheckout = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -190,6 +315,7 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
     }
 
     setIsProcessing(true);
+    setCheckoutMessage("Creating secure Razorpay order...");
 
     try {
       const orderResponse = await authorizedFetch("/api/create-order", {
@@ -202,6 +328,8 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
         }),
       });
       const order = await readApiJson<CreateOrderResponse>(orderResponse);
+      rememberPendingCheckout(order.order_id);
+      setCheckoutMessage("Opening Razorpay checkout...");
 
       await new Promise<void>((resolve, reject) => {
         const checkout = new RazorpayConstructor({
@@ -234,12 +362,21 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
             },
           },
           modal: {
-            ondismiss: () => reject(new Error("Payment was cancelled before completion.")),
+            ondismiss: () => {
+              setCheckoutMessage("Checking whether Razorpay completed the payment...");
+              pollPaymentStatus(order.order_id, 18_000)
+                .then(resolve)
+                .catch(() => reject(new Error("Payment was cancelled before completion.")));
+            },
           },
           handler: (paymentResponse) => {
             verifyPayment(paymentResponse)
               .then(resolve)
-              .catch(reject);
+              .catch(() => {
+                pollPaymentStatus(paymentResponse.razorpay_order_id, 120_000)
+                  .then(resolve)
+                  .catch(reject);
+              });
           },
         });
 
@@ -253,6 +390,7 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
       setErrorMessage(paymentErrorMessage(error));
     } finally {
       setIsProcessing(false);
+      setCheckoutMessage("");
     }
   };
 
@@ -594,6 +732,11 @@ export default function PaymentCheckout({ plan, onBack, onCancel, onComplete }: 
                   {errorMessage && (
                     <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold leading-6 text-red-600 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
                       {errorMessage}
+                    </div>
+                  )}
+                  {checkoutMessage && !errorMessage && (
+                    <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold leading-6 text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
+                      {checkoutMessage}
                     </div>
                   )}
                 </div>

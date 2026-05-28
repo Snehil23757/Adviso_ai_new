@@ -133,6 +133,7 @@ class CreateOrderResponse(BaseModel):
     order_id: str
     amount: int
     currency: str
+    payment_status: str = "pending"
 
 
 class VerifyPaymentRequest(BaseModel):
@@ -146,6 +147,20 @@ class VerifyPaymentResponse(BaseModel):
     order_id: str
     payment_id: str
     session: dict = Field(default_factory=dict)
+
+
+class PaymentStatusResponse(BaseModel):
+    success: bool
+    order_id: str
+    status: str
+    payment_status: str
+    payment_id: str = ""
+    plan_id: str = ""
+    amount: int = 0
+    currency: str = "INR"
+    subscription_active: bool = False
+    session: dict = Field(default_factory=dict)
+    message: str = ""
 
 
 class MeResponse(BaseModel):
