@@ -35,18 +35,26 @@ interface AuthPageProps {
 function authErrorMessage(error: unknown, mode: AuthMode) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code) : "";
   const rawMessage = error instanceof Error ? error.message : "";
+  const normalized = `${code} ${rawMessage}`.toLowerCase();
 
   if (
     code.includes("invalid-credential") ||
     code.includes("wrong-password") ||
     code.includes("user-not-found") ||
     code.includes("invalid-login-credentials") ||
-    rawMessage.toLowerCase().includes("invalid-credential")
+    normalized.includes("invalid_login_credentials") ||
+    normalized.includes("invalid-credential")
   ) {
-    return "Invalid email or password.";
+    return "Invalid email or password. If you registered with Google, use Google sign-in or reset your password first.";
   }
   if (code.includes("email-already-in-use")) {
     return "An account already exists for this email.";
+  }
+  if (code.includes("account-exists-with-different-credential")) {
+    return "This email already uses a different sign-in method. Try Google sign-in or reset your password.";
+  }
+  if (code.includes("user-disabled")) {
+    return "This account has been disabled. Please contact support.";
   }
   if (code.includes("weak-password")) {
     return "Please use a stronger password.";
@@ -57,8 +65,17 @@ function authErrorMessage(error: unknown, mode: AuthMode) {
   if (code.includes("too-many-requests")) {
     return "Too many attempts. Please wait a moment and try again.";
   }
-  if (code.includes("popup-closed") || code.includes("cancelled-popup-request")) {
+  if (code.includes("popup-blocked")) {
+    return "The sign-in popup was blocked by the browser. Allow popups for Adviso AI and try again.";
+  }
+  if (code.includes("popup-closed") || code.includes("popup-closed-by-user") || code.includes("cancelled-popup-request")) {
     return "Sign-in was cancelled.";
+  }
+  if (code.includes("unauthorized-domain")) {
+    return "This domain is not authorized for Firebase sign-in yet. Add advisoai.in and www.advisoai.in in Firebase Auth authorized domains.";
+  }
+  if (code.includes("api-key-not-valid") || normalized.includes("api key not valid")) {
+    return "Firebase sign-in key is not valid for this deployment. Check the production Firebase configuration.";
   }
   if (code.includes("network-request-failed")) {
     return "Network error. Check your connection and try again.";
@@ -72,7 +89,7 @@ function authErrorMessage(error: unknown, mode: AuthMode) {
 
   if (mode === "register") return "We could not create your account. Please check your details and try again.";
   if (mode === "forgot") return "We could not send a reset link. Please check the email and try again.";
-  return "We could not sign you in. Please check your details and try again.";
+  return code ? `We could not sign you in (${code}). Please try again or contact support.` : "We could not sign you in. Please check your details and try again.";
 }
 
 export default function AuthPage({ initialMode, onSuccess, onBack, theme, onToggleTheme }: AuthPageProps) {
