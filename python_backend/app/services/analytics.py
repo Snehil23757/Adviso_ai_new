@@ -127,6 +127,111 @@ def profile_dataset(rows: list[dict], columns: list[str] | None = None) -> dict:
     }
 
 
+def _profile_by_patterns(profiles: list[dict], patterns: list[str]) -> dict | None:
+    for pattern in patterns:
+        compiled = re.compile(pattern, re.IGNORECASE)
+        for item in profiles:
+            if compiled.search(str(item.get("name") or "")):
+                return item
+    return None
+
+
+def _client_context(context: dict | None) -> dict:
+    if not isinstance(context, dict):
+        return {}
+    value = context.get("client_context")
+    if isinstance(value, dict):
+        return value
+    direct_context_keys = {"active_columns", "ignored_columns", "selected_columns", "file_name", "row_count", "focus_area"}
+    if any(key in context for key in direct_context_keys):
+        return context
+    return {}
+
+
+def _chat_context_note(context: dict | None) -> str:
+    client_context = _client_context(context)
+    parts = []
+    focus = str(client_context.get("focus_area") or "").strip()
+    time_range = str(client_context.get("time_range") or "").strip()
+    business_context = str(client_context.get("business_context") or "").strip()
+    if focus and focus.lower() != "auto detect":
+        parts.append(f"focus area: {focus}")
+    if time_range and time_range.lower() != "all time":
+        parts.append(f"time range: {time_range}")
+    if business_context:
+        parts.append(f"business context: {business_context[:220]}")
+    return f"Using selected chat context ({'; '.join(parts)}). " if parts else ""
+
+
+def _sample_top_rows(profile: dict, value_column: str, label_column: str | None = None, limit: int = 5) -> list[str]:
+    ranked: list[tuple[float, dict]] = []
+    for row in profile.get("sampleRows") or []:
+        if not isinstance(row, dict):
+            continue
+        value = parse_number(row.get(value_column))
+        if value is not None:
+            ranked.append((value, row))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    results = []
+    for value, row in ranked[:limit]:
+        label = row.get(label_column) if label_column else None
+        if label in (None, ""):
+            label = row.get("product_name") or row.get("name") or row.get("category") or row.get(value_column)
+        results.append(f"{label}: {round(value, 2)}")
+    return results
+
+
+def _direct_chat_answer(profile: dict, question: str, context: dict | None = None) -> str | None:
+    if not question:
+        return None
+
+    lower = question.lower().strip()
+    client_context = _client_context(context)
+    active_columns = client_context.get("active_columns")
+    ignored_columns = client_context.get("ignored_columns")
+    selected_columns = client_context.get("selected_columns")
+
+    active_column_count = len(active_columns) if isinstance(active_columns, list) and active_columns else None
+    selected_column_count = len(selected_columns) if isinstance(selected_columns, list) and selected_columns else None
+    ignored_column_count = len(ignored_columns) if isinstance(ignored_columns, list) else 0
+    total_columns = int(profile.get("columnCount") or 0)
+    row_count = int(profile.get("rowCount") or 0)
+    numeric_columns = profile.get("numericColumns") if isinstance(profile.get("numericColumns"), list) else []
+    category_columns = profile.get("categoryColumns") if isinstance(profile.get("categoryColumns"), list) else []
+
+    asks_count = any(term in lower for term in ("how many", "number of", "count", "total"))
+    asks_column = "column" in lower or "field" in lower
+    asks_row = "row" in lower or "record" in lower
+
+    if asks_column and asks_count:
+        if any(term in lower for term in ("numeric", "numerical", "measure", "metric")):
+            return f"The dataset has {len(numeric_columns)} numeric columns."
+        if any(term in lower for term in ("category", "categorical", "text")):
+            return f"The dataset has {len(category_columns)} categorical columns."
+        if active_column_count is not None and active_column_count != total_columns:
+            return (
+                f"The active analysis view has {active_column_count} columns. "
+                f"The uploaded dataset profile has {total_columns} total columns"
+                f"{f', with {ignored_column_count} excluded from analysis' if ignored_column_count else ''}."
+            )
+        if selected_column_count is not None and selected_column_count != total_columns:
+            return f"The selected chat context has {selected_column_count} columns. The dataset profile has {total_columns} total columns."
+        return f"The dataset has {total_columns} columns."
+
+    if asks_row and asks_count:
+        return f"The dataset has {row_count} rows."
+
+    if asks_column and any(term in lower for term in ("which", "list", "show", "names", "name")):
+        columns = profile.get("columns") if isinstance(profile.get("columns"), list) else []
+        if not columns:
+            return "I could not find column names in the active dataset profile."
+        shown = ", ".join(str(column) for column in columns[:40])
+        suffix = f" and {len(columns) - 40} more" if len(columns) > 40 else ""
+        return f"Columns: {shown}{suffix}."
+
+    return None
+
+
 def _local_insight_text(mode: str, profile: dict, question: str = "", context: dict | None = None) -> str:
     rows = profile["rowCount"]
     cols = profile["columnCount"]
@@ -142,16 +247,81 @@ def _local_insight_text(mode: str, profile: dict, question: str = "", context: d
 
     if mode == "chat" and question:
         lower = question.lower()
+        context_note = _chat_context_note(context)
+        if any(term in lower for term in ("summarize", "summary", "key point", "overview")):
+            numeric_hint = ", ".join(item["name"] for item in leading_numeric[:5]) or "no reliable numeric fields"
+            category_hint = ", ".join(item["name"] for item in leading_categories[:5]) or "no categorical fields"
+            quality_hint = (
+                f"{len(missing_profiles)} columns contain missing values"
+                if missing_profiles
+                else "no missing values detected in the active profile"
+            )
+            return (
+                f"{context_note}Dataset summary: {rows} rows, {cols} columns, "
+                f"{len(numeric_profiles)} numeric fields, and {len(category_profiles)} categorical fields. "
+                f"Main numeric fields: {numeric_hint}. Main segment fields: {category_hint}. "
+                f"Data quality: {quality_hint}. Recommended next step: ask about top/bottom segments, anomalies, or actions."
+            )
         if "missing" in lower or "null" in lower or "blank" in lower:
             if not missing_profiles:
-                return f"The uploaded dataset has {rows} rows and no missing values in the detected columns."
+                return f"{context_note}The uploaded dataset has {rows} rows and no missing values in the detected columns."
             parts = [f"{item['name']}: {item['missing']} missing ({item['missingPercent']}%)" for item in missing_profiles[:8]]
-            return "Missing-value profile: " + "; ".join(parts) + "."
+            return f"{context_note}Missing-value profile: " + "; ".join(parts) + "."
+        if any(term in lower for term in ("risk", "risks", "anomaly", "anomalies", "problem", "watch")):
+            risks = []
+            if missing_profiles:
+                risks.append(
+                    "missing data in "
+                    + ", ".join(f"{item['name']} ({item['missingPercent']}%)" for item in missing_profiles[:4])
+                )
+            for item in leading_categories:
+                top_values = item.get("topValues") or []
+                if top_values and rows:
+                    top_value = top_values[0]
+                    share = round((int(top_value.get("count") or 0) / rows) * 100, 1)
+                    if share >= 45:
+                        risks.append(f"concentration in {item['name']} where '{top_value.get('value')}' is {share}% of rows")
+            if not risks and not numeric_profiles:
+                risks.append("limited numeric fields, which reduces trend and impact analysis quality")
+            if not risks:
+                risks.append("no severe structural risk found in the active profile; inspect outliers in key numeric columns next")
+            return f"{context_note}Risk scan: " + "; ".join(risks[:6]) + "."
+        if any(term in lower for term in ("top", "highest", "best", "leader")):
+            value_profile = _profile_by_patterns(numeric_profiles, [r"revenue|sales|amount|price|value|total|order|rating_count|count"])
+            label_profile = _profile_by_patterns(category_profiles, [r"product|item|name|sku|category|segment|region"])
+            if value_profile:
+                top_rows = _sample_top_rows(profile, str(value_profile["name"]), str(label_profile["name"]) if label_profile else None)
+                if top_rows:
+                    return f"{context_note}Top rows by {value_profile['name']} in the available sample: " + "; ".join(top_rows) + "."
+                stats = value_profile.get("numeric") or {}
+                return (
+                    f"{context_note}{value_profile['name']} is the best detected ranking metric. "
+                    f"It has average {stats.get('mean')} and max {stats.get('max')}. "
+                    "Use the Data Explorer for full-row ranking once the backend has the complete profile loaded."
+                )
+            if leading_categories and leading_categories[0].get("topValues"):
+                top_values = leading_categories[0]["topValues"][:5]
+                return (
+                    f"{context_note}Top values in {leading_categories[0]['name']}: "
+                    + "; ".join(f"{item['value']} ({item['count']} rows)" for item in top_values)
+                    + "."
+                )
+        if "rating" in lower and "discount" in lower:
+            rating_profile = _profile_by_patterns(numeric_profiles, [r"rating|score|stars"])
+            discount_profile = _profile_by_patterns(numeric_profiles, [r"discount|markdown|offer|pct|percent"])
+            if rating_profile and discount_profile:
+                rating_stats = rating_profile.get("numeric") or {}
+                discount_stats = discount_profile.get("numeric") or {}
+                return (
+                    f"{context_note}Detected rating field '{rating_profile['name']}' and discount field '{discount_profile['name']}'. "
+                    f"Average rating is {rating_stats.get('mean')} and average discount is {discount_stats.get('mean')}. "
+                    "Rows with below-average rating and above-average discount should be reviewed first for margin leakage or product quality issues."
+                )
         for item in numeric_profiles:
             if item["name"].lower() in lower:
                 stats = item["numeric"]
                 return (
-                    f"{item['name']} has {stats['count']} numeric values, total {stats['sum']}, "
+                    f"{context_note}{item['name']} has {stats['count']} numeric values, total {stats['sum']}, "
                     f"average {stats['mean']}, median {stats['median']}, min {stats['min']}, and max {stats['max']}."
                 )
 
@@ -246,8 +416,10 @@ def _ai_dataset_insight(mode: str, profile: dict, question: str = "", context: d
 
     system = (
         "You are Adviso AI, a senior business data analyst. Use only the dataset profile and sample rows provided. "
-        "Give concise, concrete, data-driven insights. Do not invent facts. Do not use emojis. "
-        "Return clean markdown without code fences. Use these sections when relevant: "
+        "Treat the provided context as the active workspace, dataset, selected focus area, time range, and business note. "
+        "If the user asks a direct factual/count question, answer in one short sentence and do not add sections. "
+        "For analytical questions, give concise, concrete, data-driven insights. Do not invent facts. Do not use emojis. "
+        "Return clean markdown without code fences. Use these sections only when relevant or when the user asks for analysis: "
         "## Executive Summary, ## Key Findings, ## Recommended Actions, ## Data Needed. "
         "Use short bullets under each heading. Bold only the lead phrase of a bullet. "
         "If the profile is insufficient, say what column or data is needed."
@@ -257,7 +429,7 @@ def _ai_dataset_insight(mode: str, profile: dict, question: str = "", context: d
         "question": question,
         "datasetProfile": compact_profile,
         "requiredStyle": (
-            "professional BI report; clean markdown only; headings and bullet points; "
+            "direct one-sentence answer for factual questions; professional BI report only for analytical questions; "
             "no raw JSON; no emojis; no long paragraphs"
         ),
     }
@@ -321,6 +493,16 @@ def dataset_insights(
         context=enriched_context,
         model=settings.ai_model,
     )
+    profile = profile_dataset(effective_rows, effective_columns)
+    direct_answer = _direct_chat_answer(profile, question, enriched_context) if mode == "chat" else None
+    if direct_answer:
+        return {
+            "answer": direct_answer,
+            "source": "local",
+            "profile": profile,
+            "tokens_estimated": _estimate_tokens({"mode": mode, "question": question, "context": enriched_context}, direct_answer),
+        }
+
     cached_db = get_cached_ai_response(workspace_id, prompt_hash)
     if isinstance(cached_db, dict) and isinstance(cached_db.get("response_json"), dict):
         return cached_db["response_json"]
@@ -340,7 +522,6 @@ def dataset_insights(
     if isinstance(cached, dict):
         return cached
 
-    profile = profile_dataset(effective_rows, effective_columns)
     ai_answer = _ai_dataset_insight(mode, profile, question, enriched_context)
     if ai_answer and not ai_answer.startswith("OpenAI request failed"):
         result = {

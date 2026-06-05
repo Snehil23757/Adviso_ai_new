@@ -2,20 +2,17 @@ import React from "react";
 import {
   BarChart2,
   BrainCircuit,
-  ChartDonut,
   Compass,
   Database,
   DollarSign,
   FileSpreadsheet,
   FileText,
   HelpCircle,
-  Leaf,
   Lightbulb,
   MessageSquare,
   PieChart,
   Shield,
   Table,
-  Target,
   TrendingUp,
   User,
 } from "lucide-react";
@@ -26,11 +23,10 @@ export type PlatformServiceStatus = "live" | "premium" | "planned";
 
 export type PlatformServiceId =
   | "home"
+  | "datasets"
+  | "data-preview"
   | "workspaces"
-  | "recent-reports"
-  | "data-workspace"
   | "visual-analytics"
-  | "kpi-dashboard"
   | "data-quality"
   | "ai-insights"
   | "data-chat"
@@ -40,17 +36,12 @@ export type PlatformServiceId =
   | "forecasting"
   | "budget-runway"
   | "profit-pricing"
-  | "msme-toolkit"
-  | "startup-toolkit"
   | "founder-dashboard"
-  | "business-analyst-reports"
-  | "sustainability"
-  | "competitor-intelligence"
+  | "reports"
   | "account-settings"
+  | "support-center"
   | "audit-trail"
-  | "team-members"
-  | "integrations"
-  | "billing";
+  | "team-members";
 
 export interface PlatformServiceItem {
   id: PlatformServiceId;
@@ -77,42 +68,31 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
         id: "home",
         label: "Home",
         description: "Workspace launchpad with onboarding, usage, and next actions.",
-        icon: <FileSpreadsheet className="w-4 h-4" />,
+        icon: <Compass className="w-4 h-4" />,
         tab: "Overview",
         feature: "upload.csv",
         status: "live",
         backend: "connected",
       },
-      {
-        id: "workspaces",
-        label: "Workspaces",
-        description: "Manage datasets and workspace-level business context.",
-        icon: <Database className="w-4 h-4" />,
-        feature: "upload.csv",
-        status: "planned",
-        backend: "planned",
-      },
-      {
-        id: "recent-reports",
-        label: "Recent Reports",
-        description: "A report library for AI briefs generated from previous datasets.",
-        icon: <ChartDonut className="w-4 h-4" />,
-        feature: "ai.insights",
-        status: "planned",
-        requiredPlan: "go",
-        backend: "planned",
-      },
     ],
   },
   {
-    label: "Data Intelligence",
+    label: "Data",
     items: [
       {
-        id: "data-workspace",
-        label: "Data Workspace",
-        description: "Import, validate, profile, and curate active analysis columns.",
+        id: "datasets",
+        label: "Datasets",
+        description: "Upload CSV datasets, add business context, and launch backend analysis.",
+        icon: <FileSpreadsheet className="w-4 h-4" />,
+        feature: "upload.csv",
+        status: "live",
+        backend: "connected",
+      },
+      {
+        id: "data-preview",
+        label: "Data Explorer",
+        description: "Preview uploaded records, schema, quality, and AI-ready dataset context.",
         icon: <Table className="w-4 h-4" />,
-        tab: "Overview",
         feature: "upload.csv",
         status: "live",
         backend: "connected",
@@ -129,17 +109,6 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
         backend: "connected",
       },
       {
-        id: "kpi-dashboard",
-        label: "KPI Dashboard",
-        description: "KPI summaries, monitoring, and trend context.",
-        icon: <Target className="w-4 h-4" />,
-        tab: "KPI",
-        feature: "kpi.monitor",
-        status: "live",
-        requiredPlan: "enterprise",
-        backend: "connected",
-      },
-      {
         id: "data-quality",
         label: "Data Quality",
         description: "Quality scoring, anomalies, missingness, and schema health checks.",
@@ -152,7 +121,7 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
     ],
   },
   {
-    label: "AI Advisory",
+    label: "AI Analysis",
     items: [
       {
         id: "ai-insights",
@@ -167,7 +136,7 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
       },
       {
         id: "data-chat",
-        label: "Data Chat",
+        label: "AI Chat",
         description: "Ask questions against the active dataset with authenticated backend calls.",
         icon: <MessageSquare className="w-4 h-4" />,
         tab: "Chat",
@@ -180,10 +149,11 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
         label: "Action Plan",
         description: "Convert insights into prioritized tasks, owners, and follow-up actions.",
         icon: <Lightbulb className="w-4 h-4" />,
+        tab: "Ideas",
         feature: "ideas.generate",
-        status: "premium",
+        status: "live",
         requiredPlan: "go",
-        backend: "planned",
+        backend: "connected",
       },
       {
         id: "decision-brief",
@@ -202,7 +172,7 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
     items: [
       {
         id: "what-if-simulator",
-        label: "What-if Simulator",
+        label: "What-If Simulator",
         description: "Scenario modeling for revenue, cost, runway, and demand assumptions.",
         icon: <Compass className="w-4 h-4" />,
         feature: "forecast.run",
@@ -246,69 +216,66 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
     ],
   },
   {
-    label: "Business Modules",
+    label: "Business Context",
     items: [
       {
-        id: "msme-toolkit",
-        label: "MSME Toolkit",
-        description: "Templates and guided diagnostics for smaller business workflows.",
-        icon: <ChartDonut className="w-4 h-4" />,
-        feature: "ideas.generate",
+        id: "workspaces",
+        label: "Business Context",
+        description: "Add business context, workspace metadata, and operating assumptions.",
+        icon: <Database className="w-4 h-4" />,
+        feature: "upload.csv",
         status: "planned",
-        requiredPlan: "go",
-        backend: "planned",
-      },
-      {
-        id: "startup-toolkit",
-        label: "Startup Toolkit",
-        description: "Runway, growth, pricing, and investor-prep modules for founders.",
-        icon: <TrendingUp className="w-4 h-4" />,
-        feature: "forecast.run",
-        status: "planned",
-        requiredPlan: "pro",
         backend: "planned",
       },
       {
         id: "founder-dashboard",
         label: "Founder Dashboard",
         description: "A founder cockpit for milestones, KPIs, runway, and strategic alerts.",
-        icon: <Compass className="w-4 h-4" />,
+        icon: <User className="w-4 h-4" />,
         feature: "enterprise.controls",
         status: "premium",
         requiredPlan: "enterprise",
         backend: "planned",
       },
+    ],
+  },
+  {
+    label: "Reports",
+    items: [
       {
-        id: "business-analyst-reports",
-        label: "Business Analyst Reports",
-        description: "Recurring analyst-style reports generated from business datasets.",
+        id: "reports",
+        label: "Reports",
+        description: "Export reports, AI briefs, and reusable decision documents.",
         icon: <FileText className="w-4 h-4" />,
-        feature: "ai.insights",
+        feature: "export.csv",
+        status: "planned",
+        requiredPlan: "go",
+        backend: "planned",
+      },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      {
+        id: "team-members",
+        label: "Team Members",
+        description: "Invite teammates, roles, permissions, and collaborative workspaces.",
+        icon: <User className="w-4 h-4" />,
+        feature: "team.manage",
         status: "premium",
-        requiredPlan: "pro",
+        requiredPlan: "enterprise",
         backend: "planned",
       },
       {
-        id: "sustainability",
-        label: "Sustainability",
-        description: "ESG and impact concentration analysis.",
-        icon: <Leaf className="w-4 h-4" />,
-        tab: "Sustainability",
-        feature: "esg.analyze",
-        status: "live",
-        requiredPlan: "enterprise",
-        backend: "connected",
-      },
-      {
-        id: "competitor-intelligence",
-        label: "Competitor Intel",
-        description: "Competitive positioning, market risk, and benchmark comparison.",
+        id: "audit-trail",
+        label: "Audit Trail",
+        description: "Track dataset imports, payment events, access, and AI activity.",
         icon: <Shield className="w-4 h-4" />,
-        tab: "Competitor",
-        feature: "competitor.analyze",
-        status: "live",
-        requiredPlan: "pro",
-        backend: "connected",
+        feature: "enterprise.controls",
+        status: "premium",
+        requiredPlan: "enterprise",
+        backend: "planned",
       },
     ],
   },
@@ -324,49 +291,14 @@ export const PLATFORM_NAV_SECTIONS: PlatformNavSection[] = [
         status: "live",
         backend: "connected",
       },
-    ],
-  },
-  {
-    label: "Trust & Admin",
-    items: [
       {
-        id: "audit-trail",
-        label: "Audit Trail",
-        description: "Track dataset imports, payment events, access, and AI activity.",
-        icon: <Shield className="w-4 h-4" />,
-        feature: "enterprise.controls",
-        status: "premium",
-        requiredPlan: "enterprise",
-        backend: "planned",
-      },
-      {
-        id: "team-members",
-        label: "Team Members",
-        description: "Invite teammates, roles, permissions, and collaborative workspaces.",
+        id: "support-center",
+        label: "Support",
+        description: "Contact support, view guidance, and send workspace feedback.",
         icon: <HelpCircle className="w-4 h-4" />,
-        feature: "team.manage",
-        status: "premium",
-        requiredPlan: "enterprise",
-        backend: "planned",
-      },
-      {
-        id: "integrations",
-        label: "Integrations",
-        description: "Connect CRM, accounting, analytics, and payment data sources.",
-        icon: <Database className="w-4 h-4" />,
-        feature: "enterprise.controls",
-        status: "premium",
-        requiredPlan: "enterprise",
-        backend: "planned",
-      },
-      {
-        id: "billing",
-        label: "Billing",
-        description: "Subscription, invoices, payment history, and Razorpay billing controls.",
-        icon: <DollarSign className="w-4 h-4" />,
         feature: "upload.csv",
-        status: "planned",
-        backend: "planned",
+        status: "live",
+        backend: "connected",
       },
     ],
   },

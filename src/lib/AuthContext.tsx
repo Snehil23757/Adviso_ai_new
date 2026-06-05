@@ -1,8 +1,7 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -10,7 +9,7 @@ import {
   type User,
 } from "firebase/auth";
 
-import { auth, googleProvider, isFirebaseConfigured } from "../firebase.js";
+import { auth, authPersistenceReady, googleProvider, isFirebaseConfigured } from "../firebase.js";
 import { apiUrl, readApiJson } from "../config";
 
 export interface FirebaseUserProfile {
@@ -82,20 +81,6 @@ async function validateEmailBeforeRegistration(email: string) {
   }
 }
 
-async function sendBrandedPasswordReset(email: string) {
-  let response: Response;
-  try {
-    response = await fetch(apiUrl("/api/auth/password-reset"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-  } catch (error) {
-    throw Object.assign(new Error("Backend password reset is unavailable."), { backendUnavailable: true, cause: error });
-  }
-  await readApiJson<{ success: boolean; message: string }>(response);
-}
-
 async function sendBrandedEmailVerification(token: string) {
   const response = await fetch(apiUrl("/api/auth/email-verification"), {
     method: "POST",
@@ -104,19 +89,43 @@ async function sendBrandedEmailVerification(token: string) {
   await readApiJson<{ success: boolean; message: string }>(response);
 }
 
+async function sendBrandedPasswordReset(email: string) {
+  const response = await fetch(apiUrl("/api/auth/password-reset"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  await readApiJson<{ success: boolean; message: string }>(response);
+}
+
+async function syncBackendWorkspaceSession(user: User) {
+  try {
+    const token = await user.getIdToken(true);
+    const sessionResponse = await fetch(apiUrl("/api/workspaces/session"), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await readApiJson(sessionResponse);
+    return true;
+  } catch (error) {
+    console.warn("Backend workspace session sync failed. Auth session will remain active.", error);
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<FirebaseUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshSession = async () => {
+  const refreshSession = useCallback(async () => {
     if (!auth?.currentUser) {
       setProfile(null);
       return;
     }
     await auth.currentUser.reload();
+    await auth.currentUser.getIdToken();
     setProfile(profileFromFirebaseUser(auth.currentUser));
-  };
+  }, []);
 
   useEffect(() => {
     if (!auth) {
@@ -124,18 +133,91 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return undefined;
     }
 
-    return onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      if (!nextUser) {
-        setProfile(null);
-        setLoading(false);
-        return;
-      }
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    setLoading(true);
 
-      setProfile(profileFromFirebaseUser(nextUser));
-      setLoading(false);
+    authPersistenceReady.finally(() => {
+      if (cancelled) return;
+      unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+        setUser(nextUser);
+        if (!nextUser) {
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        try {
+          await nextUser.getIdToken();
+        } catch (error) {
+          console.warn("Firebase session restore token refresh failed.", error);
+        }
+
+        if (!cancelled) {
+          setProfile(profileFromFirebaseUser(nextUser));
+          setLoading(false);
+        }
+      });
     });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!auth || !user) return undefined;
+
+    let cancelled = false;
+    const refreshFirebaseToken = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.uid !== user.uid) return;
+
+      try {
+        await currentUser.getIdToken(true);
+        if (!cancelled) {
+          setProfile(profileFromFirebaseUser(currentUser));
+        }
+      } catch (error) {
+        console.warn("Silent Firebase token refresh failed.", error);
+      }
+    };
+
+    const timer = window.setInterval(refreshFirebaseToken, 50 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!auth || !user) return undefined;
+
+    const refreshOnReturn = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.uid !== user.uid) return;
+      try {
+        await currentUser.getIdToken();
+        setProfile(profileFromFirebaseUser(currentUser));
+      } catch (error) {
+        console.warn("Firebase session refresh on return failed.", error);
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refreshOnReturn();
+      }
+    };
+
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -144,42 +226,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       authReady: isFirebaseConfigured,
       signInEmail: async (email, password) => {
-        await signInWithEmailAndPassword(requireAuth(), email, password);
+        await authPersistenceReady;
+        const credential = await signInWithEmailAndPassword(requireAuth(), email, password);
+        await syncBackendWorkspaceSession(credential.user);
         await refreshSession();
       },
       registerEmail: async (fullName, email, password) => {
+        await authPersistenceReady;
         await validateEmailBeforeRegistration(email);
         const credential = await createUserWithEmailAndPassword(requireAuth(), email, password);
         await updateProfile(credential.user, { displayName: fullName });
         const token = await credential.user.getIdToken(true);
         await sendBrandedEmailVerification(token);
-        const sessionResponse = await fetch(apiUrl("/api/workspaces/session"), {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        await readApiJson(sessionResponse);
+        await syncBackendWorkspaceSession(credential.user);
         await refreshSession();
       },
       signInGoogle: async () => {
-        await signInWithPopup(requireAuth(), googleProvider);
+        await authPersistenceReady;
+        const credential = await signInWithPopup(requireAuth(), googleProvider);
+        await syncBackendWorkspaceSession(credential.user);
         await refreshSession();
       },
       resetPassword: async (email) => {
-        try {
-          await sendBrandedPasswordReset(email);
-        } catch (error) {
-          if (!(error instanceof Error) || !(error as Error & { backendUnavailable?: boolean }).backendUnavailable) {
-            throw error;
-          }
-          await sendPasswordResetEmail(requireAuth(), email);
-        }
+        await authPersistenceReady;
+        const normalizedEmail = email.trim().toLowerCase();
+        await sendBrandedPasswordReset(normalizedEmail);
       },
       logout: async () => {
+        await authPersistenceReady;
         await signOut(requireAuth());
         setProfile(null);
       },
       refreshSession,
     }),
-    [loading, profile, user],
+    [loading, profile, refreshSession, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

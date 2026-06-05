@@ -16,6 +16,13 @@ from app.services.email_templates import render_email_template
 
 logger = logging.getLogger("adviso-ai.email")
 RESEND_SEND_ENDPOINT = "https://api.resend.com/emails"
+AUTH_CRITICAL_TEMPLATES = {
+    "welcome",
+    "registration_success",
+    "trial_started",
+    "password_reset",
+    "email_verification",
+}
 
 
 def _app_url(path: str = "") -> str:
@@ -162,7 +169,22 @@ def send_email_event(event_id: int) -> dict[str, Any]:
         raise RuntimeError(str(exc)) from exc
 
 
-def enqueue_email_event(event_id: int) -> bool:
+def _send_email_event_in_thread(event_id: int, reason: str) -> None:
+    def runner() -> None:
+        try:
+            send_email_event(int(event_id))
+        except Exception:
+            logger.warning("Background email send failed for event_id=%s reason=%s", event_id, reason, exc_info=True)
+
+    thread = threading.Thread(target=runner, daemon=True, name=f"email-event-{event_id}")
+    thread.start()
+
+
+def enqueue_email_event(event_id: int, *, prefer_background_send: bool = False) -> bool:
+    if prefer_background_send:
+        _send_email_event_in_thread(event_id, "auth-critical")
+        return False
+
     try:
         from app.celery_app import celery_app
 
@@ -170,8 +192,7 @@ def enqueue_email_event(event_id: int) -> bool:
         return True
     except Exception as exc:
         logger.warning("Email queue unavailable; sending event %s in a fallback thread: %s", event_id, exc)
-        thread = threading.Thread(target=lambda: send_email_event(int(event_id)), daemon=True)
-        thread.start()
+        _send_email_event_in_thread(event_id, "celery-unavailable")
         return False
 
 
@@ -182,6 +203,7 @@ def queue_transactional_email(
     user_id: int | None = None,
     workspace_id: int | None = None,
     metadata: dict[str, Any] | None = None,
+    prefer_background_send: bool | None = None,
 ) -> dict[str, Any]:
     rendered = render_email_template(template, metadata or {})
     event = create_email_event(
@@ -192,8 +214,13 @@ def queue_transactional_email(
         subject=rendered.subject,
         metadata=metadata or {},
     )
-    queued_to_celery = enqueue_email_event(int(event["id"]))
-    return {**event, "queued_to_celery": queued_to_celery}
+    send_without_celery = template in AUTH_CRITICAL_TEMPLATES if prefer_background_send is None else prefer_background_send
+    queued_to_celery = enqueue_email_event(int(event["id"]), prefer_background_send=send_without_celery)
+    return {
+        **event,
+        "queued_to_celery": queued_to_celery,
+        "delivery_mode": "celery" if queued_to_celery else "background",
+    }
 
 
 def queue_welcome_email_for_user(user: dict[str, Any], workspace_id: int | None = None) -> dict[str, Any] | None:
@@ -202,13 +229,47 @@ def queue_welcome_email_for_user(user: dict[str, Any], workspace_id: int | None 
         return None
 
     with get_db() as conn:
+        existing_event = conn.execute(
+            """
+            SELECT id, status
+            FROM email_events
+            WHERE user_id = %s
+              AND template = 'welcome'
+              AND status IN ('queued', 'sending', 'sent')
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (user["id"],),
+        ).fetchone()
+        if existing_event:
+            status = str(existing_event["status"] or "")
+            if status == "sent":
+                conn.execute(
+                    """
+                    UPDATE users
+                    SET welcome_email_sent_at = COALESCE(welcome_email_sent_at, NOW()),
+                        updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (user["id"],),
+                )
+                conn.commit()
+            logger.info(
+                "Welcome email already %s for user_id=%s email=%s event_id=%s",
+                status,
+                user.get("id"),
+                email,
+                existing_event["id"],
+            )
+            return None
+
         row = conn.execute(
             """
             UPDATE users
-            SET welcome_email_queued_at = COALESCE(welcome_email_queued_at, NOW()),
+            SET welcome_email_queued_at = NOW(),
                 profile_metadata_json = profile_metadata_json || %s::jsonb,
                 updated_at = NOW()
-            WHERE id = %s AND welcome_email_queued_at IS NULL
+            WHERE id = %s AND welcome_email_sent_at IS NULL
             RETURNING *
             """,
             (
@@ -216,7 +277,6 @@ def queue_welcome_email_for_user(user: dict[str, Any], workspace_id: int | None 
                     {
                         "email_verified": bool(user.get("email_verified")),
                         "onboarding_completed": bool(user.get("onboarding_completed")),
-                        "trial_started_at": user.get("trial_started_at"),
                         "welcome_email_queued_at": now_utc().isoformat(),
                     }
                 ),
@@ -226,20 +286,70 @@ def queue_welcome_email_for_user(user: dict[str, Any], workspace_id: int | None 
         conn.commit()
     queued_user = normalize_record(row)
     if not queued_user:
+        logger.info("Welcome email already sent for user_id=%s email=%s", user.get("id"), email)
         return None
 
-    return queue_transactional_email(
+    event = queue_transactional_email(
         template="welcome",
         email=email,
         user_id=int(user["id"]),
         workspace_id=workspace_id,
         metadata={
             "full_name": user.get("full_name") or "there",
-            "plan_name": "Free Trial",
+            "plan_name": "Free Workspace",
             "launch_url": _app_url("login"),
             "upgrade_url": _app_url("pricing"),
         },
     )
+    logger.info("Welcome email queued for user_id=%s email=%s event_id=%s", user.get("id"), email, event.get("id"))
+    return event
+
+
+def queue_admin_registration_notification(user: dict[str, Any], workspace_id: int | None = None) -> dict[str, Any] | None:
+    email = get_settings().admin_notification_email.strip().lower() or "support@adviso.in"
+    user_id = int(user["id"]) if user.get("id") is not None else None
+    if user_id is None:
+        return None
+
+    with get_db() as conn:
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM email_events
+            WHERE user_id = %s AND template = 'new_registration_admin'
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+    if existing:
+        logger.info("Admin registration notification already queued for user_id=%s", user_id)
+        return None
+
+    event = queue_transactional_email(
+        template="new_registration_admin",
+        email=email,
+        user_id=user_id,
+        workspace_id=workspace_id,
+        metadata={
+            "full_name": user.get("full_name") or "Unknown user",
+            "email": user.get("email") or "",
+            "auth_provider": user.get("auth_provider") or "password",
+            "firebase_uid": user.get("firebase_uid") or "",
+            "registration_time": user.get("created_at") or now_utc().isoformat(),
+            "profile_picture": user.get("profile_picture") or "",
+        },
+    )
+    logger.info("Admin registration notification queued for user_id=%s event_id=%s", user_id, event.get("id"))
+    return event
+
+
+def queue_registration_emails_for_user(user: dict[str, Any], workspace_id: int | None = None) -> dict[str, Any]:
+    welcome_event = queue_welcome_email_for_user(user, workspace_id)
+    admin_event = queue_admin_registration_notification(user, workspace_id)
+    return {
+        "welcome": welcome_event,
+        "admin_notification": admin_event,
+    }
 
 
 def queue_password_reset_email(email: str, reset_url: str) -> dict[str, Any]:

@@ -29,6 +29,24 @@ interface SubscriptionSnapshot {
   upgradedAt: string | null;
   loading: boolean;
   error: string;
+  planType: "owner" | "premium" | "free";
+  subscriptionStatus: "active" | "expired" | "cancelled" | string;
+  trial: TrialSnapshot;
+  trialExpired: boolean;
+  effectivePlanId: string;
+  accessLevel: "full" | "paid" | "free" | string;
+}
+
+export interface TrialSnapshot {
+  active: boolean;
+  expired: boolean;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  days_remaining: number;
+  seconds_remaining: number;
+  warning_level: "blue" | "yellow" | "orange" | "red" | "expired" | "none" | string;
+  trial_days: number;
 }
 
 interface BackendSession {
@@ -45,12 +63,19 @@ interface BackendSession {
     updated_at: string;
     last_login: string | null;
   };
+  access_level?: "full" | "paid" | "free" | string;
   subscription: {
     plan_id: string;
     status: string;
     start_date?: string;
     end_date?: string | null;
     credits_remaining?: number | null;
+    plan_type?: "owner" | "premium" | "free";
+    subscription_status?: string;
+    trial?: Partial<TrialSnapshot>;
+    trial_expired?: boolean;
+    effective_plan_id?: string;
+    access_level?: "full" | "paid" | "free" | string;
   };
   permissions: {
     features: Record<string, boolean>;
@@ -77,6 +102,32 @@ interface PermissionContextValue {
 }
 
 const PermissionContext = createContext<PermissionContextValue | null>(null);
+
+const EMPTY_TRIAL: TrialSnapshot = {
+  active: false,
+  expired: false,
+  status: "none",
+  start_date: null,
+  end_date: null,
+  days_remaining: 0,
+  seconds_remaining: 0,
+  warning_level: "none",
+  trial_days: 0,
+};
+
+function normalizeTrial(value?: Partial<TrialSnapshot>): TrialSnapshot {
+  return {
+    ...EMPTY_TRIAL,
+    ...(value || {}),
+    active: Boolean(value?.active),
+    expired: Boolean(value?.expired),
+    start_date: value?.start_date || null,
+    end_date: value?.end_date || null,
+    days_remaining: Number(value?.days_remaining || 0),
+    seconds_remaining: Number(value?.seconds_remaining || 0),
+    trial_days: Number(value?.trial_days || 0),
+  };
+}
 
 interface RefreshSubscriptionOptions {
   notify?: boolean;
@@ -143,6 +194,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const backendPlanId = backendSession?.subscription.plan_id;
     const planId: PlanId = isPlanId(backendPlanId) ? backendPlanId : "free";
     const plan = PLAN_DEFINITIONS[planId];
+    const trial = normalizeTrial(backendSession?.subscription.trial);
     const sessionLoading = loading || Boolean(user && !backendSession && !error);
     const features = backendSession?.permissions.features || fallbackFeatures(plan);
     const backendTabs = backendSession?.permissions.tabs || [];
@@ -161,6 +213,12 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         upgradedAt: backendSession?.subscription.start_date || null,
         loading: sessionLoading,
         error,
+        planType: backendSession?.subscription.plan_type || (plan.id === "free" ? "free" : "premium"),
+        subscriptionStatus: backendSession?.subscription.subscription_status || "active",
+        trial,
+        trialExpired: Boolean(backendSession?.subscription.trial_expired),
+        effectivePlanId: backendSession?.subscription.effective_plan_id || plan.id,
+        accessLevel: backendSession?.access_level || backendSession?.subscription.access_level || (plan.id === "free" ? "free" : "paid"),
       },
       plans: PLAN_DEFINITIONS,
       availableTabs,

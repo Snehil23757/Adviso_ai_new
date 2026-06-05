@@ -15,10 +15,25 @@ CREATE TABLE IF NOT EXISTS users (
     auth_provider TEXT NOT NULL DEFAULT 'password',
     plan_id TEXT NOT NULL DEFAULT 'free' REFERENCES plans(id),
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    plan_type TEXT NOT NULL DEFAULT 'trial',
+    trial_start_date TIMESTAMPTZ,
+    trial_end_date TIMESTAMPTZ,
+    trial_active BOOLEAN NOT NULL DEFAULT TRUE,
+    subscription_status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_login TIMESTAMPTZ
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_type TEXT NOT NULL DEFAULT 'trial';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'active';
+
+CREATE INDEX IF NOT EXISTS idx_users_trial_end ON users(trial_end_date DESC);
+CREATE INDEX IF NOT EXISTS idx_users_trial_active ON users(trial_active, trial_end_date DESC);
+CREATE INDEX IF NOT EXISTS idx_users_plan_type_status ON users(plan_type, subscription_status);
 
 CREATE TABLE IF NOT EXISTS subscriptions (
     id BIGSERIAL PRIMARY KEY,

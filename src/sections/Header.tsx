@@ -12,6 +12,16 @@ interface HeaderProps {
   toggleTheme?: () => void;
 }
 
+const NAV_ITEMS = [
+  { label: "Platform", id: "platform-overview", path: "/platform" },
+  { label: "Features", id: "platform-overview", path: "/features" },
+  { label: "Use Cases", id: "use-cases", path: "/use-cases" },
+  { label: "Architecture", id: "security", path: "/architecture" },
+  { label: "Pricing", id: "pricing", path: "/pricing" },
+  { label: "About Us", id: "about", path: "/about" },
+  { label: "Vision & Mission", id: "vision", path: "/vision" },
+];
+
 export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, onNavigatePublic, theme, toggleTheme }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -97,20 +107,14 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
         </div>
 
         {/* Center: Navigation Options */}
-        <nav className={`hidden lg:flex items-center transition-all duration-500 ${
-          isMinimized ? "gap-7 scale-[0.96] opacity-75" : "gap-9 scale-100 opacity-100"
+        <nav className={`hidden xl:flex items-center transition-all duration-500 ${
+          isMinimized ? "gap-4 xl:gap-6 scale-[0.96] opacity-75" : "gap-5 xl:gap-7 scale-100 opacity-100"
         }`}>
-          {[
-            { label: "Platform", id: "platform-overview", path: "/platform" },
-            { label: "Features", id: "platform-overview", path: "/features" },
-            { label: "Use Cases", id: "use-cases", path: "/use-cases" },
-            { label: "Architecture", id: "security", path: "/architecture" },
-            { label: "Pricing", id: "pricing", path: "/pricing" },
-          ].map((item, idx) => (
+          {NAV_ITEMS.map((item, idx) => (
             <button
               key={idx}
               onClick={() => scrollToSection(item.id, item.path)}
-              className={`${isMinimized ? "text-[14px]" : "text-[15px]"} font-bold text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer`}
+              className={`${isMinimized ? "text-[13px]" : "text-[14px]"} font-bold text-brand-text-secondary hover:text-brand-text-primary transition cursor-pointer`}
             >
               {item.label}
             </button>
@@ -118,7 +122,7 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
         </nav>
 
         {/* Right Action buttons */}
-        <div className={`hidden lg:flex items-center transition-all duration-500 ${
+        <div className={`hidden xl:flex items-center transition-all duration-500 ${
           isMinimized ? "gap-3 scale-[0.96]" : "gap-5 scale-100"
         }`}>
           {toggleTheme && (
@@ -166,7 +170,7 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
         </div>
 
         {/* Mobile menu toggle */}
-        <div className="lg:hidden flex items-center gap-2">
+        <div className="xl:hidden flex items-center gap-2">
           {toggleTheme && (
             <button 
               onClick={toggleTheme}
@@ -186,15 +190,9 @@ export default function Header({ userEmail, onLogout, onTriggerAuth, onOpenApp, 
 
       {/* Mobile Drawer Menu */}
       {isMenuOpen && (
-        <div className="lg:hidden bg-brand-background border-b border-brand-border px-6 py-6 space-y-4 animate-fade-in shadow-xl">
+        <div className="xl:hidden bg-brand-background border-b border-brand-border px-6 py-6 space-y-4 animate-fade-in shadow-xl">
           <div className="flex flex-col gap-4">
-            {[
-              { label: "Platform", id: "platform-overview", path: "/platform" },
-              { label: "Features", id: "platform-overview", path: "/features" },
-              { label: "Use Cases", id: "use-cases", path: "/use-cases" },
-              { label: "Architecture", id: "security", path: "/architecture" },
-              { label: "Pricing", id: "pricing", path: "/pricing" },
-            ].map((item, idx) => (
+            {NAV_ITEMS.map((item, idx) => (
               <button
                 key={idx}
                 onClick={() => scrollToSection(item.id, item.path)}

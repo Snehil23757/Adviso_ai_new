@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app.config import get_settings
 from app.database import get_db
-from app.saas import current_subscription_for_user
+from app.saas import access_plan_for_user
 from app.services.redis_service import get_redis_service
 
 
@@ -28,8 +28,8 @@ PLAN_QUOTAS: dict[str, WorkspaceQuota] = {
 
 
 def quota_for_user(user: dict[str, Any]) -> WorkspaceQuota:
-    subscription = current_subscription_for_user(int(user["id"]))
-    plan_id = (subscription or {}).get("plan_id") or user.get("plan_id") or "free"
+    access = access_plan_for_user(user)
+    plan_id = access.get("effective_plan_id") or user.get("plan_id") or "free"
     return PLAN_QUOTAS.get(str(plan_id), PLAN_QUOTAS["free"])
 
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles, ArrowRight, MessageSquareCode, Mail } from "lucide-react";
+import { Sparkles, ArrowRight, Mail } from "lucide-react";
 
 export default function FinalCTA() {
   const scrollToPortal = () => {
@@ -12,17 +12,45 @@ export default function FinalCTA() {
   };
 
   return (
-    <section id="contact" className="relative py-24 overflow-hidden border-t border-brand-border">
+    <section id="contact" className="relative py-24 overflow-hidden border-t border-white/[0.04]">
       {/* Background Visual Grids and Auras */}
       <div className="absolute inset-0 subtle-grid opacity-15 pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] radar-sweep rounded-full opacity-35 blur-[120px] pointer-events-none"></div>
+      <div className="pointer-events-none absolute left-1/2 top-[-126px] h-[260px] w-[125vw] -translate-x-1/2 overflow-hidden">
+        <div className="absolute left-1/2 top-0 h-[210px] w-[58vw] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,rgba(20,93,255,0.42)_0%,rgba(32,215,255,0.18)_34%,transparent_72%)] blur-[42px] opacity-70 mix-blend-screen" />
+        <div className="absolute left-[18%] top-10 h-28 w-[32vw] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(20,93,255,0.18),transparent_72%)] blur-[52px] opacity-45 mix-blend-screen" />
+        <div className="absolute right-[18%] top-10 h-28 w-[32vw] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(20,93,255,0.18),transparent_72%)] blur-[52px] opacity-45 mix-blend-screen" />
+        <svg
+          className="absolute left-1/2 top-16 h-28 w-[118vw] -translate-x-1/2 opacity-60 blur-[12px] mix-blend-screen"
+          viewBox="0 0 1440 180"
+          fill="none"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id="finalCtaArcGlow" x1="0" y1="90" x2="1440" y2="90" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#145DFF" stopOpacity="0" />
+              <stop offset="0.28" stopColor="#145DFF" stopOpacity="0.18" />
+              <stop offset="0.5" stopColor="#20D7FF" stopOpacity="0.58" />
+              <stop offset="0.72" stopColor="#145DFF" stopOpacity="0.18" />
+              <stop offset="1" stopColor="#145DFF" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M -20 42 C 170 112 316 118 500 82 C 690 45 830 58 1010 92 C 1192 127 1310 104 1460 24"
+            stroke="url(#finalCtaArcGlow)"
+            strokeWidth="28"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="pointer-events-none absolute left-1/2 top-0 h-px w-[70vw] -translate-x-1/2 bg-[linear-gradient(90deg,transparent,rgba(32,215,255,0.22),transparent)] opacity-40 blur-sm" />
 
       <div className="max-w-4xl mx-auto px-6 relative z-10 w-full text-center space-y-8">
         
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/25 text-brand-primary text-xs font-mono font-medium tracking-wider">
+        {/* <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/25 text-brand-primary text-xs font-mono font-medium tracking-wider">
           <Sparkles className="w-3.5 h-3.5" />
           <span>START COMPILING STRATEGY</span>
-        </div>
+        </div> */}
 
         <div className="space-y-4 max-w-2xl mx-auto">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-brand-text-primary font-sans leading-tight">
@@ -53,9 +81,9 @@ export default function FinalCTA() {
         </div>
 
         {/* Core footer declaration notes */}
-        <p className="text-[10px] font-mono text-brand-text-secondary uppercase tracking-widest pt-2">
+        {/* <p className="text-[10px] font-mono text-brand-text-secondary uppercase tracking-widest pt-2">
           SECURED VIA TOKENIZED SHARED DATA LAYERS
-        </p>
+        </p> */}
 
       </div>
     </section>

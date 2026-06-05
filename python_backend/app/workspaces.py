@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from typing import Any
@@ -27,6 +28,7 @@ CSV_CONTENT_TYPES = {
     "text/x-csv",
     "application/vnd.ms-excel",
 }
+logger = logging.getLogger("adviso-ai.workspaces")
 
 
 def normalized_content_type(value: str) -> str:
@@ -75,7 +77,12 @@ def ensure_default_workspace(user: dict[str, Any]) -> dict[str, Any]:
             (user["id"],),
         ).fetchone()
         if existing:
-            return normalize_record(existing) or {}
+            workspace = normalize_record(existing) or {}
+            try:
+                queue_welcome_email_for_user(user, int(workspace["id"]))
+            except Exception:
+                logger.warning("Welcome email queue attempt failed for existing workspace.", exc_info=True)
+            return workspace
 
         name = "Personal Workspace"
         workspace = conn.execute(
@@ -105,7 +112,10 @@ def ensure_default_workspace(user: dict[str, Any]) -> dict[str, Any]:
         {"name": name},
         event_type="workspace",
     )
-    queue_welcome_email_for_user(user, int(workspace["id"]))
+    try:
+        queue_welcome_email_for_user(user, int(workspace["id"]))
+    except Exception:
+        logger.warning("Welcome email queue attempt failed for new workspace.", exc_info=True)
     return normalize_record(workspace) or {}
 
 
@@ -353,6 +363,41 @@ def soft_delete_dataset_for_workspace(user: dict[str, Any], workspace_id: int, d
         "dataset",
         str(dataset_id),
         {"soft_delete": True, "file_name": dataset["file_name"]},
+        event_type="workspace",
+    )
+    return normalize_record(dataset) or {}
+
+
+def update_dataset_context_for_workspace(user: dict[str, Any], workspace_id: int, dataset_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    require_workspace_access(user, workspace_id, {"owner", "admin", "analyst", "member"})
+    context = {
+        "dataset_name": str(payload.get("dataset_name") or "").strip()[:160],
+        "business_function": str(payload.get("business_function") or "").strip()[:80],
+        "source_system": str(payload.get("source_system") or "").strip()[:120],
+        "data_state": str(payload.get("data_state") or "").strip()[:80],
+        "description": str(payload.get("description") or "").strip()[:1000],
+    }
+    with get_db() as conn:
+        dataset = conn.execute(
+            """
+            UPDATE datasets
+            SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) || %s::jsonb,
+                updated_at = NOW()
+            WHERE workspace_id = %s AND id = %s AND deleted_at IS NULL
+            RETURNING *
+            """,
+            (Json({"business_context": context}), workspace_id, dataset_id),
+        ).fetchone()
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found.")
+        conn.commit()
+    store_audit_event(
+        workspace_id,
+        int(user["id"]),
+        "dataset.context_updated",
+        "dataset",
+        str(dataset_id),
+        {"context": context},
         event_type="workspace",
     )
     return normalize_record(dataset) or {}

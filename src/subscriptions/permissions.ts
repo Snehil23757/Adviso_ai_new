@@ -78,7 +78,7 @@ function routesForTabs(tabs: DashboardTabId[]): RouteKey[] {
   return ["dashboard", ...tabs.map(routeForTab)];
 }
 
-const FREE_TABS: DashboardTabId[] = ["Overview", "Chat"];
+const FREE_TABS: DashboardTabId[] = ["Overview"];
 const GO_TABS: DashboardTabId[] = ["Overview", "Chat", "Ideas", "Budget"];
 const PRO_TABS: DashboardTabId[] = ["Overview", "Charts", "AI", "Chat", "Profit", "Forecast", "Competitor"];
 const ENTERPRISE_TABS = DASHBOARD_TAB_ORDER;
@@ -96,7 +96,6 @@ export const PLAN_DEFINITIONS: Record<PlanId, PlanDefinition> = {
     routes: routesForTabs(FREE_TABS),
     features: {
       "upload.csv": true,
-      "ai.chat": true,
     },
   },
   go: {

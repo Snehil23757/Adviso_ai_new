@@ -16,14 +16,14 @@ _pool: ConnectionPool | None = None
 
 
 PLAN_SEEDS = [
-    ("free", "FREE", 0, 0, "Basic workspace access with upload and chat."),
+    ("free", "FREE", 0, 0, "Basic workspace access with Home and Settings only."),
     ("go", "GO", 7900, 94800, "Focused operator workspace with chat, ideas, and budget planning."),
     ("pro", "PRO", 39900, 478800, "Advanced analytics, forecasting, and competitive intelligence."),
     ("enterprise", "ENTERPRISE", 399900, 4798800, "All tools, advanced analytics, teams, and enterprise controls."),
 ]
 
 PLAN_FEATURES: dict[str, list[str]] = {
-    "free": ["upload.csv", "ai.chat"],
+    "free": ["upload.csv"],
     "go": ["upload.csv", "ai.chat", "ideas.generate", "budget.plan", "ai.insights"],
     "pro": [
         "upload.csv",
@@ -180,6 +180,11 @@ def initialize_database() -> None:
         email_verified BOOLEAN NOT NULL DEFAULT FALSE,
         onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
         trial_started_at TIMESTAMPTZ,
+        trial_start_date TIMESTAMPTZ,
+        trial_end_date TIMESTAMPTZ,
+        trial_active BOOLEAN NOT NULL DEFAULT FALSE,
+        plan_type TEXT NOT NULL DEFAULT 'free',
+        subscription_status TEXT NOT NULL DEFAULT 'active',
         profile_metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
         welcome_email_queued_at TIMESTAMPTZ,
         welcome_email_sent_at TIMESTAMPTZ,
@@ -193,13 +198,29 @@ def initialize_database() -> None:
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_active BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_type TEXT NOT NULL DEFAULT 'free';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'active';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_email_queued_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_email_sent_at TIMESTAMPTZ;
+    ALTER TABLE users ALTER COLUMN trial_active SET DEFAULT FALSE;
+    ALTER TABLE users ALTER COLUMN plan_type SET DEFAULT 'free';
+    UPDATE users
+    SET trial_active = FALSE,
+        plan_type = CASE WHEN plan_id <> 'free' THEN 'premium' ELSE 'free' END,
+        subscription_status = CASE WHEN subscription_status = 'expired' AND plan_id = 'free' THEN 'active' ELSE subscription_status END,
+        updated_at = NOW()
+    WHERE trial_active = TRUE OR plan_type = 'trial';
 
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_created ON users(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_users_trial_started ON users(trial_started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_users_trial_end ON users(trial_end_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_users_trial_active ON users(trial_active, trial_end_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_users_plan_type_status ON users(plan_type, subscription_status);
     CREATE INDEX IF NOT EXISTS idx_users_email_verified ON users(email_verified);
 
     CREATE TABLE IF NOT EXISTS workspaces (
@@ -723,4 +744,5 @@ def initialize_database() -> None:
                     """,
                     (plan_id, feature),
                 )
+        conn.execute("UPDATE feature_access SET enabled = FALSE WHERE plan_id = 'free' AND feature_name <> 'upload.csv'")
         conn.commit()

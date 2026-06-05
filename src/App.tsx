@@ -1,7 +1,6 @@
 import React, { Suspense, lazy, useCallback, useState, useEffect } from "react";
 import Header from "./sections/Header.tsx";
 import Hero from "./sections/Hero.tsx";
-import Lenis from "lenis";
 import { AnimatePresence, motion } from "motion/react";
 import { initGoogleAnalytics, trackEvent, trackPageView } from "./analytics.ts";
 import { authorizedFetch, readApiJson } from "./config";
@@ -14,6 +13,8 @@ const LaptopScene = lazy(() => import("./components/LaptopScene.tsx"));
 const CinematicProfilesScene = lazy(() => import("./sections/landing/CinematicProfilesScene.tsx"));
 const Security = lazy(() => import("./sections/Security.tsx"));
 const Pricing = lazy(() => import("./sections/Pricing.tsx"));
+const About = lazy(() => import("./sections/About.tsx"));
+const Vision = lazy(() => import("./sections/Vision.tsx"));
 const FinalCTA = lazy(() => import("./sections/FinalCTA.tsx"));
 const Footer = lazy(() => import("./sections/Footer.tsx"));
 const PlatformDashboard = lazy(() => import("./components/PlatformDashboard.tsx"));
@@ -29,8 +30,7 @@ const PUBLIC_SECTION_ROUTES: Record<string, string> = {
   "/use-cases": "use-cases",
   "/architecture": "security",
   "/pricing": "pricing",
-  "/about": "use-cases",
-  "/contact": "pricing",
+  "/contact": "contact",
 };
 
 const APP_ROUTE_TO_TAB: Record<string, DashboardTabId> = {
@@ -77,7 +77,7 @@ function isAppRoute(path: string) {
 }
 
 function isAuthRoute(path: string) {
-  return path === "/login" || path === "/register";
+  return path === "/login" || path === "/register" || path === "/forgot-password";
 }
 
 function routeDepth(path: string) {
@@ -91,12 +91,15 @@ function pageTitleForPath(path: string) {
   if (path === "/checkout") return "Adviso AI - Checkout";
   if (path === "/login") return "Adviso AI - Login";
   if (path === "/register") return "Adviso AI - Register";
+  if (path === "/forgot-password") return "Adviso AI - Reset Password";
   if (isAppRoute(path)) return "Adviso AI - Dashboard";
   if (path === "/platform") return "Adviso AI - Platform";
   if (path === "/pricing") return "Adviso AI - Pricing";
   if (path === "/features") return "Adviso AI - Features";
   if (path === "/use-cases") return "Adviso AI - Use Cases";
   if (path === "/architecture") return "Adviso AI - Architecture";
+  if (path === "/about") return "Adviso AI - About Us";
+  if (path === "/vision") return "Adviso AI - Vision & Mission";
   return "Adviso AI - Landing";
 }
 
@@ -151,6 +154,27 @@ function SectionLoader() {
   return (
     <div className="flex items-center justify-center py-20">
       <div className="h-10 w-10 rounded-full border border-brand-border border-t-brand-primary animate-spin" />
+    </div>
+  );
+}
+
+function WorkspaceLoader({ label }: { label: string }) {
+  return (
+    <div className="min-h-screen bg-brand-background text-brand-text-primary flex items-center justify-center">
+      <motion.div
+        className="rounded-2xl border border-brand-border bg-brand-surface px-6 py-5 text-sm font-semibold text-brand-text-secondary shadow-2xl shadow-brand-primary/10"
+        initial={{ opacity: 0, y: 14, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-primary opacity-40" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-brand-primary" />
+          </span>
+          {label}
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -230,27 +254,6 @@ export default function App() {
   }, [path]);
 
   useEffect(() => {
-    if (isAppRoute(path)) return undefined;
-
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    });
-
-    const raf = (time: number) => {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    };
-
-    requestAnimationFrame(raf);
-
-    return () => {
-      lenis.destroy();
-    };
-  }, [path]);
-
-  useEffect(() => {
     if (authLoading) return;
 
     if (user) {
@@ -292,7 +295,13 @@ export default function App() {
   }, [navigate, path, selectedPlan, user]);
 
   useEffect(() => {
-    if (path === "/") {
+    if (path === "/team") {
+      navigate("/about", { replace: true });
+    }
+  }, [navigate, path]);
+
+  useEffect(() => {
+    if (path === "/" || path === "/about" || path === "/vision") {
       window.scrollTo({ top: 0, behavior: "auto" });
       return;
     }
@@ -347,25 +356,15 @@ export default function App() {
     navigate("/app", { replace: true });
   };
 
+  const isStandaloneCompanyPage = path === "/about" || path === "/vision";
+
   if (authLoading) {
-    return (
-      <div className="min-h-screen bg-brand-background text-brand-text-primary flex items-center justify-center">
-        <div className="rounded-2xl border border-brand-border bg-brand-surface px-6 py-5 text-sm font-semibold text-brand-text-secondary">
-          Loading secure workspace...
-        </div>
-      </div>
-    );
+    return <WorkspaceLoader label="Restoring secure workspace..." />;
   }
 
   if (isAppRoute(path)) {
     if (!userEmail) {
-      return (
-        <div className="min-h-screen bg-brand-background text-brand-text-primary flex items-center justify-center">
-          <div className="rounded-2xl border border-brand-border bg-brand-surface px-6 py-5 text-sm font-semibold text-brand-text-secondary">
-            Redirecting to sign in...
-          </div>
-        </div>
-      );
+      return <WorkspaceLoader label="Preparing sign in..." />;
     }
 
     return (
@@ -407,9 +406,10 @@ export default function App() {
         <RouteTransition routeKey={path} direction={routeDirection} variant="auth">
           <Suspense fallback={<SectionLoader />}>
             <AuthPage
-              initialMode={path === "/register" ? "register" : "login"}
+              initialMode={path === "/register" ? "register" : path === "/forgot-password" ? "forgot" : "login"}
               onSuccess={handleAuthSuccess}
               onBack={() => navigate("/")}
+              onNavigateAuth={(mode) => navigate(mode === "register" ? "/register" : mode === "forgot" ? "/forgot-password" : "/login")}
               theme={theme}
               onToggleTheme={toggleTheme}
             />
@@ -439,30 +439,41 @@ export default function App() {
         />
 
         <main className="relative z-10 w-full">
-          <Hero />
+          {isStandaloneCompanyPage ? (
+            <div className="pt-24 lg:pt-[104px]">
+              <Suspense fallback={<SectionLoader />}>
+                {path === "/about" && <About />}
+                {path === "/vision" && <Vision />}
+              </Suspense>
+            </div>
+          ) : (
+            <>
+              <Hero />
 
-          <Suspense fallback={<SectionLoader />}>
-            <Trust />
-          </Suspense>
+              <Suspense fallback={<SectionLoader />}>
+                <Trust />
+              </Suspense>
 
-          <Suspense fallback={<SectionLoader />}>
-            <section id="platform-overview" className="adviso-scroll-scene bg-[#02040a]">
-              <LaptopScene />
-            </section>
-            <section id="use-cases" className="adviso-scroll-scene bg-[#02040a]">
-              <CinematicProfilesScene />
-            </section>
-          </Suspense>
+              <Suspense fallback={<SectionLoader />}>
+                <section id="platform-overview" className="adviso-scroll-scene bg-[#02040a]">
+                  <LaptopScene />
+                </section>
+                <section id="use-cases" className="adviso-scroll-scene bg-[#02040a]">
+                  <CinematicProfilesScene />
+                </section>
+              </Suspense>
 
-          <Suspense fallback={<SectionLoader />}>
-            <Security />
-            <Pricing onSelectPlan={goToCheckout} />
-            <FinalCTA />
-          </Suspense>
+              <Suspense fallback={<SectionLoader />}>
+                <Security />
+                <Pricing onSelectPlan={goToCheckout} />
+                <FinalCTA />
+              </Suspense>
+            </>
+          )}
         </main>
 
         <Suspense fallback={null}>
-          <Footer />
+          <Footer onNavigatePublic={(nextPath) => navigate(nextPath)} />
         </Suspense>
       </div>
     </RouteTransition>

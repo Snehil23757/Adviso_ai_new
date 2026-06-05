@@ -761,27 +761,6 @@ html.dark .hero-carousel-floating-icon-cyan {
   background: rgba(74, 99, 255, 0.4);
 }
 
-/* Lenis Smooth Scroll Recommended Resets */
-html.lenis, html.lenis body {
-  height: auto;
-}
-
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-
-.lenis.lenis-smooth [data-lenis-prevent] {
-  scroll-behavior: contain;
-}
-
-.lenis.lenis-stopped {
-  overflow: hidden;
-}
-
-.lenis.lenis-scrolling iframe {
-  pointer-events: none;
-}
-
 /* Adviso platform workspace */
 .adviso-platform {
   --ap-bg: #f7fbff;
@@ -838,13 +817,27 @@ html.lenis, html.lenis body {
   box-shadow: 0 12px 35px rgba(20, 93, 255, 0.24);
 }
 
+.ap-trial-tone-yellow {
+  background: linear-gradient(90deg, #b7791f 0%, #f59e0b 48%, #fbbf24 100%);
+}
+
+.ap-trial-tone-orange {
+  background: linear-gradient(90deg, #b45309 0%, #f97316 52%, #fb923c 100%);
+}
+
+.ap-trial-tone-red {
+  background: linear-gradient(90deg, #991b1b 0%, #dc2626 52%, #ef4444 100%);
+}
+
 .ap-shell {
+  min-height: 0;
   background:
     radial-gradient(circle at 80% 8%, rgba(20, 93, 255, 0.08), transparent 28%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 249, 255, 0.95));
 }
 
 .ap-dashboard-main {
+  overscroll-behavior: contain;
   background:
     linear-gradient(90deg, rgba(20, 93, 255, 0.035) 1px, transparent 1px),
     linear-gradient(180deg, rgba(20, 93, 255, 0.035) 1px, transparent 1px);
@@ -858,6 +851,8 @@ html.lenis, html.lenis body {
 }
 
 .ap-sidebar {
+  min-height: 0;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 18px 0 45px rgba(15, 45, 95, 0.04);
 }
@@ -970,6 +965,35 @@ html.lenis, html.lenis body {
   color: var(--ap-text);
 }
 
+.ap-nav-home-icon {
+  width: 2.55rem;
+  height: 2.55rem;
+  justify-content: center;
+  padding: 0;
+  margin-left: 0.1rem;
+}
+
+.ap-sidebar-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  color: var(--ap-muted);
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.ap-sidebar-section-toggle:hover,
+.ap-sidebar-section-active {
+  background: rgba(20, 93, 255, 0.07);
+  color: var(--ap-accent);
+}
+
 .ap-nav-item-active {
   background: linear-gradient(135deg, #145dff 0%, #0b6bff 100%);
   color: #ffffff;
@@ -982,6 +1006,30 @@ html.lenis, html.lenis body {
   width: 1.25rem;
   height: 1.25rem;
   flex-shrink: 0;
+}
+
+.ap-nav-item-collapsed {
+  aspect-ratio: 1 / 1;
+  padding: 0.72rem;
+}
+
+.ap-sidebar-collapse-btn {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--ap-border);
+  background: var(--ap-surface-2);
+  color: var(--ap-muted);
+  transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.ap-sidebar-collapse-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(20, 93, 255, 0.24);
+  color: var(--ap-accent);
+  background: var(--ap-surface);
 }
 
 .ap-nav-badge {
@@ -1022,6 +1070,78 @@ html.lenis, html.lenis body {
 .ap-help-card {
   border-color: rgba(20, 93, 255, 0.12);
   background: linear-gradient(135deg, rgba(20, 93, 255, 0.08), rgba(32, 215, 255, 0.06));
+}
+
+.ap-sidebar-account {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid var(--ap-border);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.65rem;
+  color: var(--ap-text);
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ap-sidebar-account:hover {
+  transform: translateY(-1px);
+  border-color: rgba(20, 93, 255, 0.22);
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(20, 93, 255, 0.08);
+}
+
+.ap-sidebar-trial-card {
+  border: 1px solid rgba(20, 93, 255, 0.16);
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(20, 93, 255, 0.08), rgba(32, 215, 255, 0.06));
+  color: var(--ap-accent);
+  padding: 0.8rem 0.9rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.ap-trial-compact-yellow {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.08));
+  color: #b7791f;
+}
+
+.ap-trial-compact-orange {
+  border-color: rgba(249, 115, 22, 0.28);
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(251, 146, 60, 0.08));
+  color: #c2410c;
+}
+
+.ap-trial-compact-red,
+.ap-trial-compact-expired {
+  border-color: rgba(220, 38, 38, 0.28);
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.12), rgba(248, 113, 113, 0.08));
+  color: #dc2626;
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(20, 93, 255, 0.28) transparent;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 0.55rem;
+  height: 0.55rem;
+}
+
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0.5rem 0;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(20, 93, 255, 0.38), rgba(32, 215, 255, 0.2)) content-box;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(20, 93, 255, 0.58), rgba(32, 215, 255, 0.34)) content-box;
 }
 
 .adviso-platform.dark {
@@ -1107,6 +1227,30 @@ html.lenis, html.lenis body {
 
 .adviso-platform.dark .ap-nav-item:hover {
   background: rgba(91, 111, 255, 0.12);
+}
+
+.adviso-platform.dark .ap-sidebar-section-toggle:hover,
+.adviso-platform.dark .ap-sidebar-section-active {
+  background: rgba(91, 111, 255, 0.12);
+  color: #8aa4ff;
+}
+
+.adviso-platform.dark .ap-sidebar-account {
+  background: rgba(21, 27, 39, 0.78);
+}
+
+.adviso-platform.dark .ap-sidebar-account:hover {
+  background: rgba(21, 27, 39, 0.96);
+  border-color: rgba(91, 111, 255, 0.28);
+}
+
+.adviso-platform.dark .ap-sidebar-trial-card {
+  background: linear-gradient(135deg, rgba(91, 111, 255, 0.16), rgba(32, 215, 255, 0.07));
+  border-color: rgba(91, 111, 255, 0.24);
+}
+
+.adviso-platform.dark .scroll-thin {
+  scrollbar-color: rgba(138, 164, 255, 0.36) transparent;
 }
 
 .adviso-platform.dark .bg-white,

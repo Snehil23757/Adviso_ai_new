@@ -166,6 +166,7 @@ class PaymentStatusResponse(BaseModel):
 class MeResponse(BaseModel):
     success: bool
     user: dict
+    access_level: str = "free"
     subscription: dict
     permissions: dict
 
@@ -242,6 +243,14 @@ class DatasetResponse(BaseModel):
     dataset: dict
     columns: list[dict] = Field(default_factory=list)
     stats: dict = Field(default_factory=dict)
+
+
+class DatasetContextUpdateRequest(BaseModel):
+    dataset_name: str = Field(default="", max_length=160)
+    business_function: str = Field(default="", max_length=80)
+    source_system: str = Field(default="", max_length=120)
+    data_state: str = Field(default="", max_length=80)
+    description: str = Field(default="", max_length=1000)
 
 
 class UploadCompleteResponse(BaseModel):
@@ -327,6 +336,7 @@ class PaymentPreferenceUpdate(BaseModel):
 class AccountSettingsResponse(BaseModel):
     success: bool
     user: dict
+    access_level: str = "free"
     subscription: dict
     plan: dict
     permissions: dict

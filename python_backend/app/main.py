@@ -33,6 +33,7 @@ from app.models import (
     FeedbackSubmissionRequest,
     FeedbackSubmissionResponse,
     CompetitorRequest,
+    DatasetContextUpdateRequest,
     DatasetListResponse,
     DatasetInsightRequest,
     DatasetInsightResponse,
@@ -92,6 +93,7 @@ from app.services.limits import (
 from app.services.redis_service import get_redis_service
 from app.services.email_service import queue_email_verification_email, queue_password_reset_email
 from app.services.email_validation import validate_registration_email
+from app.services.executive_insights import build_executive_insights
 from app.services.feedback_service import create_feedback_submission
 from app.services.usage import record_usage, workspace_usage_snapshot
 from app.saas import (
@@ -128,6 +130,7 @@ from app.workspaces import (
     require_workspace_access,
     soft_delete_dataset_for_workspace,
     soft_delete_workspace_for_user,
+    update_dataset_context_for_workspace,
 )
 
 
@@ -351,7 +354,9 @@ def password_reset_email(payload: PasswordResetEmailRequest) -> PasswordResetEma
 
     try:
         reset_link = generate_password_reset_link(str(validation["email"]))
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
         logger.info("Password reset requested for an email without a Firebase account.")
         return PasswordResetEmailResponse(message="If this email has an Adviso AI account, a reset link will be sent.")
 
@@ -492,6 +497,12 @@ def get_dataset(workspace_id: int, dataset_id: int, user: dict = Depends(get_cur
     return DatasetResponse(dataset=result["dataset"], columns=result["columns"], stats=result["stats"])
 
 
+@app.patch("/api/workspaces/{workspace_id}/datasets/{dataset_id}/context")
+def update_dataset_context(workspace_id: int, dataset_id: int, payload: DatasetContextUpdateRequest, user: dict = Depends(get_current_user)) -> dict:
+    dataset = update_dataset_context_for_workspace(user, workspace_id, dataset_id, payload.model_dump())
+    return {"success": True, "dataset": dataset}
+
+
 @app.delete("/api/workspaces/{workspace_id}/datasets/{dataset_id}")
 def delete_dataset(workspace_id: int, dataset_id: int, user: dict = Depends(get_current_user)) -> dict:
     dataset = soft_delete_dataset_for_workspace(user, workspace_id, dataset_id)
@@ -524,6 +535,22 @@ async def workspace_dataset_insights(workspace_id: int, dataset_id: int, payload
     )
     log_usage(user["id"], f"/api/workspaces/{workspace_id}/datasets/{dataset_id}/insights", payload.mode)
     return DatasetInsightResponse(success=True, answer=result["answer"], source=result["source"], profile=result.get("profile", {}))
+
+
+@app.get("/api/workspaces/{workspace_id}/datasets/{dataset_id}/executive-insights")
+async def workspace_dataset_executive_insights(workspace_id: int, dataset_id: int, user: dict = Depends(get_current_user)) -> dict:
+    ensure_feature_access(user, "ai.insights")
+    payload = build_executive_insights(user, workspace_id, dataset_id)
+    record_usage(
+        workspace_id=workspace_id,
+        user_id=int(user["id"]),
+        metric="ai.executive_insight_view",
+        units=1,
+        dataset_id=dataset_id,
+        endpoint=f"/api/workspaces/{workspace_id}/datasets/{dataset_id}/executive-insights",
+        metadata={"source": payload.get("source")},
+    )
+    return payload
 
 
 @app.post("/api/workspaces/{workspace_id}/chats")

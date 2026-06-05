@@ -278,6 +278,7 @@ def answer_workspace_chat(user: dict[str, Any], workspace_id: int, payload: dict
         user_id=user["id"],
         role="user",
         content=question,
+        metadata={"context": payload.get("context") if isinstance(payload.get("context"), dict) else {}},
     )
     result = dataset_insights(
         "chat",

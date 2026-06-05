@@ -35,6 +35,7 @@ import {
   Gauge,
   Graph,
   HardDrive,
+  InstagramLogo,
   Key,
   Leaf,
   Lightbulb,
@@ -68,6 +69,7 @@ import {
   User,
   Warning,
   WarningCircle,
+  XLogo,
   X as PhX,
   Lightning,
 } from "@phosphor-icons/react";
@@ -118,6 +120,7 @@ export const Layers = icon(Stack);
 export const LineChart = icon(ChartLine);
 export const Link = icon(LinkSimple);
 export const Linkedin = icon(LinkedinLogo);
+export const Instagram = icon(InstagramLogo);
 export const Lock = icon(PhLock);
 export const LogOut = icon(SignOut);
 export const Mail = icon(EnvelopeSimple);
@@ -150,6 +153,7 @@ export { TableIcon as Table };
 export const TrendingUp = icon(TrendUp);
 export const UploadCloud = icon(UploadSimple);
 export const Workflow = icon(Graph);
+export const Twitter = icon(XLogo);
 export const X = icon(PhX, "bold");
 export const Zap = icon(Lightning);
 

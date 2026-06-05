@@ -22,10 +22,11 @@ const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 export const auth = app ? getAuth(app) : null;
 export const googleProvider = new GoogleAuthProvider();
 
-googleProvider.setCustomParameters({
-  prompt: "select_account",
-});
+googleProvider.addScope("email");
+googleProvider.addScope("profile");
 
-if (auth) {
-  setPersistence(auth, browserLocalPersistence);
-}
+export const authPersistenceReady = auth
+  ? setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.warn("Firebase auth persistence could not be initialized.", error);
+    })
+  : Promise.resolve();

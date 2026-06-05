@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request
@@ -7,6 +8,11 @@ from psycopg.types.json import Json
 from app.auth import get_firebase_claims
 from app.database import get_db, normalize_record, normalize_row, now_utc
 from app.services.email_validation import validate_registration_email
+
+
+logger = logging.getLogger("adviso-ai.saas")
+OWNER_EMAILS = {"syyash14@gmail.com"}
+PAID_PLAN_IDS = {"go", "pro", "enterprise"}
 
 
 FEATURE_TO_TABS: dict[str, list[str]] = {
@@ -51,6 +57,18 @@ MODE_TO_FEATURE: dict[str, str] = {
 }
 
 
+def normalize_email(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def is_owner_email(email: Any) -> bool:
+    return normalize_email(email) in OWNER_EMAILS
+
+
+def is_owner_user(user: dict[str, Any]) -> bool:
+    return is_owner_email(user.get("email"))
+
+
 def provider_from_claims(claims: dict[str, Any]) -> str:
     firebase = claims.get("firebase") or {}
     providers = firebase.get("identities") or {}
@@ -70,6 +88,8 @@ def upsert_user_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
     provider = provider_from_claims(claims)
     email_verified = bool(claims.get("email_verified"))
     validation = validate_registration_email(email)
+    clean_email = validation.get("email") or email
+    owner_access = is_owner_email(clean_email)
 
     with get_db() as conn:
         existing = conn.execute("SELECT id, email FROM users WHERE firebase_uid = %s", (firebase_uid,)).fetchone()
@@ -85,20 +105,26 @@ def upsert_user_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
         }
         if is_new_user:
             profile_metadata["onboarding_completed"] = False
-            profile_metadata["trial_started_at"] = now_utc().isoformat()
+            profile_metadata["registration_detected_at"] = now_utc().isoformat()
         row = conn.execute(
             """
             INSERT INTO users (
                 firebase_uid, email, full_name, profile_picture, auth_provider,
-                plan_id, email_verified, onboarding_completed, trial_started_at,
+                plan_id, is_admin, email_verified, onboarding_completed, trial_started_at,
+                trial_start_date, trial_end_date, trial_active, plan_type, subscription_status,
                 profile_metadata_json, login_count, last_login, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, 'free', %s, FALSE, NOW(), %s, 1, NOW(), NOW())
+            VALUES (
+                %s, %s, %s, %s, %s, 'free', %s, %s, FALSE, NULL,
+                NULL, NULL, FALSE, 'free', 'active',
+                %s, 1, NOW(), NOW()
+            )
             ON CONFLICT (firebase_uid) DO UPDATE SET
                 email = EXCLUDED.email,
                 full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), users.full_name),
                 profile_picture = COALESCE(NULLIF(EXCLUDED.profile_picture, ''), users.profile_picture),
                 auth_provider = EXCLUDED.auth_provider,
+                is_admin = CASE WHEN EXCLUDED.is_admin THEN TRUE ELSE users.is_admin END,
                 email_verified = EXCLUDED.email_verified,
                 profile_metadata_json = users.profile_metadata_json || EXCLUDED.profile_metadata_json,
                 login_count = users.login_count + 1,
@@ -106,7 +132,21 @@ def upsert_user_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
                 updated_at = NOW()
             RETURNING *
             """,
-            (firebase_uid, validation.get("email") or email, full_name, picture, provider, email_verified, Json(profile_metadata)),
+            (firebase_uid, clean_email, full_name, picture, provider, owner_access, email_verified, Json(profile_metadata)),
+        ).fetchone()
+
+        row = conn.execute(
+            """
+            UPDATE users
+            SET trial_active = FALSE,
+                plan_type = CASE WHEN plan_id <> 'free' THEN 'premium' ELSE 'free' END,
+                subscription_status = COALESCE(NULLIF(subscription_status, ''), 'active'),
+                is_admin = CASE WHEN %s THEN TRUE ELSE is_admin END,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING *
+            """,
+            (owner_access, row["id"]),
         ).fetchone()
 
         conn.execute(
@@ -121,6 +161,14 @@ def upsert_user_from_claims(claims: dict[str, Any]) -> dict[str, Any]:
         )
         conn.commit()
         user = normalize_record(row) or {}
+
+    if is_new_user:
+        try:
+            from app.services.email_service import queue_registration_emails_for_user
+
+            queue_registration_emails_for_user(user)
+        except Exception:
+            logger.warning("Registration email queue failed for user_id=%s email=%s", user.get("id"), user.get("email"), exc_info=True)
 
     return user
 
@@ -208,14 +256,72 @@ def current_subscription_for_user(user_id: int) -> dict[str, Any] | None:
     return normalize_record(row)
 
 
+def current_trial_for_user(user_id: int) -> dict[str, Any]:
+    return {
+        "active": False,
+        "expired": False,
+        "status": "paused",
+        "start_date": None,
+        "end_date": None,
+        "days_remaining": 0,
+        "seconds_remaining": 0,
+        "warning_level": "none",
+        "trial_days": 0,
+    }
+
+
+def access_plan_for_user(user: dict[str, Any]) -> dict[str, Any]:
+    if is_owner_user(user):
+        return {
+            "subscription": current_subscription_for_user(int(user["id"])),
+            "trial": current_trial_for_user(int(user["id"])),
+            "paid_active": False,
+            "owner_access": True,
+            "effective_plan_id": "enterprise",
+            "access_allowed": True,
+            "access_level": "full",
+            "trial_expired": False,
+        }
+
+    subscription = current_subscription_for_user(int(user["id"]))
+    paid_plan_id = str((subscription or {}).get("plan_id") or "")
+    paid_active = bool(subscription and paid_plan_id in PAID_PLAN_IDS)
+    trial = current_trial_for_user(int(user["id"]))
+
+    if paid_active:
+        return {
+            "subscription": subscription,
+            "trial": trial,
+            "paid_active": True,
+            "owner_access": False,
+            "effective_plan_id": paid_plan_id,
+            "access_allowed": True,
+            "access_level": "paid",
+            "trial_expired": False,
+        }
+
+    return {
+        "subscription": subscription,
+        "trial": trial,
+        "paid_active": False,
+        "owner_access": False,
+        "effective_plan_id": "free",
+        "access_allowed": True,
+        "access_level": "free",
+        "trial_expired": False,
+    }
+
+
 def session_payload(user: dict[str, Any]) -> dict[str, Any]:
-    subscription = current_subscription_for_user(user["id"])
-    plan_id = (subscription or {}).get("plan_id") or "free"
+    access = access_plan_for_user(user)
+    subscription = access["subscription"]
+    plan_id = access["effective_plan_id"] if access.get("owner_access") else (subscription or {}).get("plan_id") or "free"
     plan = get_plan(plan_id)
-    permissions = build_permissions(plan_id)
+    permissions = build_permissions(access["effective_plan_id"])
     return {
         "success": True,
         "user": normalize_row(user),
+        "access_level": access.get("access_level", "free"),
         "subscription": {
             "plan_id": plan_id,
             "plan": plan,
@@ -224,6 +330,12 @@ def session_payload(user: dict[str, Any]) -> dict[str, Any]:
             "end_date": (subscription or {}).get("end_date"),
             "auto_renew": (subscription or {}).get("auto_renew", False),
             "credits_remaining": 0 if plan_id == "free" else None,
+            "plan_type": "owner" if access.get("owner_access") else "premium" if access["paid_active"] else "free",
+            "subscription_status": "active",
+            "trial": access["trial"],
+            "trial_expired": access["trial_expired"],
+            "effective_plan_id": access["effective_plan_id"],
+            "access_level": access.get("access_level", "free"),
         },
         "permissions": permissions,
     }
@@ -341,10 +453,11 @@ def update_payment_preference(user: dict[str, Any], updates: dict[str, Any]) -> 
 
 
 def account_settings_payload(user: dict[str, Any]) -> dict[str, Any]:
-    subscription = current_subscription_for_user(user["id"])
-    plan_id = (subscription or {}).get("plan_id") or "free"
+    access = access_plan_for_user(user)
+    subscription = access["subscription"]
+    plan_id = access["effective_plan_id"] if access.get("owner_access") else (subscription or {}).get("plan_id") or "free"
     plan = get_plan(plan_id)
-    permissions = build_permissions(plan_id)
+    permissions = build_permissions(access["effective_plan_id"])
     preferences = ensure_account_preferences(user["id"])
     payment_preference = ensure_payment_preference(user)
 
@@ -374,6 +487,7 @@ def account_settings_payload(user: dict[str, Any]) -> dict[str, Any]:
     return {
         "success": True,
         "user": normalize_row(user),
+        "access_level": access.get("access_level", "free"),
         "subscription": {
             "plan_id": plan_id,
             "status": (subscription or {}).get("status", "active"),
@@ -382,6 +496,12 @@ def account_settings_payload(user: dict[str, Any]) -> dict[str, Any]:
             "auto_renew": (subscription or {}).get("auto_renew", False),
             "razorpay_order_id": (subscription or {}).get("razorpay_order_id"),
             "razorpay_payment_id": (subscription or {}).get("razorpay_payment_id"),
+            "plan_type": "owner" if access.get("owner_access") else "premium" if access["paid_active"] else "free",
+            "subscription_status": "active",
+            "trial": access["trial"],
+            "trial_expired": access["trial_expired"],
+            "effective_plan_id": access["effective_plan_id"],
+            "access_level": access.get("access_level", "free"),
         },
         "plan": plan,
         "permissions": permissions,
@@ -400,11 +520,18 @@ def account_settings_payload(user: dict[str, Any]) -> dict[str, Any]:
 
 
 def ensure_feature_access(user: dict[str, Any], feature_name: str) -> None:
-    subscription = current_subscription_for_user(user["id"])
-    plan_id = (subscription or {}).get("plan_id") or "free"
-    features = get_features_for_plan(plan_id)
+    access = access_plan_for_user(user)
+    features = get_features_for_plan(access["effective_plan_id"])
     if not features.get(feature_name):
-        raise HTTPException(status_code=403, detail=f"Upgrade required for feature: {feature_name}.")
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": "Upgrade required to unlock this Adviso AI module.",
+                "upgrade_required": True,
+                "feature_name": feature_name,
+                "access_level": access.get("access_level", "free"),
+            },
+        )
 
 
 def require_feature(feature_name: str):
@@ -416,7 +543,7 @@ def require_feature(feature_name: str):
 
 
 def ensure_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    if not user.get("is_admin"):
+    if not user.get("is_admin") and not is_owner_user(user):
         raise HTTPException(status_code=403, detail="Admin access is required.")
     return user
 
@@ -445,7 +572,6 @@ TERMINAL_PAYMENT_STATUSES = SUCCESS_PAYMENT_STATUSES | {
     "order_amount_mismatch",
     "order_owner_mismatch",
 }
-
 
 def public_payment_state(payment_status: str) -> str:
     normalized = (payment_status or "").lower()
@@ -717,7 +843,11 @@ def activate_subscription_from_payment(
         user = conn.execute(
             """
             UPDATE users
-            SET plan_id = %s, updated_at = NOW()
+            SET plan_id = %s,
+                plan_type = 'premium',
+                trial_active = FALSE,
+                subscription_status = 'active',
+                updated_at = NOW()
             WHERE id = %s
             RETURNING *
             """,

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     email_from_welcome: str = "Adviso AI <welcome@adviso.ai>"
     email_from_support: str = "Adviso AI Support <support@adviso.ai>"
     email_reply_to: str = "support@adviso.ai"
+    admin_notification_email: str = "support@adviso.in"
     app_public_url: str = "https://adviso.ai"
     email_logo_url: str = ""
     email_hero_image_url: str = ""

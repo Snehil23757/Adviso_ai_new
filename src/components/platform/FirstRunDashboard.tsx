@@ -1,6 +1,7 @@
 import React from "react";
 import {
   ChartDonut,
+  CheckCircle2,
   Compass,
   Database,
   FileText,
@@ -19,9 +20,34 @@ import type { PlanDefinition, PlanId } from "../../subscriptions/permissions";
 interface FirstRunDashboardProps {
   displayName: string;
   greeting: string;
-  subscription: { plan: PlanDefinition; planId: PlanId; creditsRemaining: number | null };
+  subscription: {
+    plan: PlanDefinition;
+    planId: PlanId;
+    creditsRemaining: number | null;
+    trial?: {
+      active?: boolean;
+      expired?: boolean;
+      days_remaining?: number;
+      end_date?: string | null;
+    };
+  };
   nextUpgradePlan: PlanDefinition | null;
+  dataset?: {
+    fileName: string;
+    rowCount: number;
+    columnCount: number;
+    activeColumnCount: number;
+    missingCells: number;
+    numericFields: number;
+    categoryFields: number;
+    qualityScore: number;
+    backendConnected: boolean;
+    onOpenPreview: () => void;
+    onGenerateInsights: () => void;
+  };
   onViewPlans: () => void;
+  showUploadActions?: boolean;
+  onOpenDatasets?: () => void;
   isDragging: boolean;
   onDragOver: React.DragEventHandler<HTMLDivElement>;
   onDragLeave: React.DragEventHandler<HTMLDivElement>;
@@ -36,15 +62,25 @@ export default function FirstRunDashboard({
   greeting,
   subscription,
   nextUpgradePlan,
+  dataset,
   onViewPlans,
+  showUploadActions = true,
+  onOpenDatasets,
   isDragging,
   onDragOver,
   onDragLeave,
   onDrop,
   onFile,
 }: FirstRunDashboardProps) {
+  const datasetLoaded = Boolean(dataset);
+  const trialDaysRemaining = Math.max(0, Number(subscription.trial?.days_remaining || 0));
+  const completedSteps = datasetLoaded ? 1 : 0;
   const nextSteps = [
-    { icon: <UploadCloud className="w-4 h-4" />, title: "Upload a sales or operational CSV", detail: "Import your first dataset to get started" },
+    {
+      icon: datasetLoaded ? <CheckCircle2 className="w-4 h-4" /> : <Database className="w-4 h-4" />,
+      title: datasetLoaded ? "Dataset uploaded" : "Prepare your first dataset",
+      detail: datasetLoaded ? dataset?.fileName || "CSV is ready for preview" : "Open Datasets to import and analyze your CSV",
+    },
     { icon: <Target className="w-4 h-4" />, title: "Review your auto-generated KPIs", detail: "See key metrics visualized instantly" },
     { icon: <Sparkles className="w-4 h-4" />, title: "Ask Adviso AI for insights", detail: "Get explanations behind the numbers" },
     { icon: <TrendingUp className="w-4 h-4" />, title: "Run a what-if scenario", detail: "Simulate changes and compare outcomes" },
@@ -74,31 +110,46 @@ export default function FirstRunDashboard({
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
         <div
           className={`ap-action-card rounded-2xl border p-6 text-center transition ${isDragging ? "ring-4 ring-blue-200" : ""}`}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
+          onDragOver={showUploadActions ? onDragOver : undefined}
+          onDragLeave={showUploadActions ? onDragLeave : undefined}
+          onDrop={showUploadActions ? onDrop : undefined}
         >
           <div className="ap-soft-orb ap-tone-blue mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full">
-            <UploadCloud className="h-8 w-8" />
+            {dataset ? <CheckCircle2 className="h-8 w-8" /> : <Database className="h-8 w-8" />}
           </div>
-          <h2 className="text-lg font-black">Upload your first dataset</h2>
+          <h2 className="text-lg font-black">{dataset ? "Dataset uploaded" : "Workspace ready"}</h2>
           <p className="mx-auto mt-2 max-w-[230px] text-sm leading-6 ap-muted">
-            Import a CSV to unlock instant KPIs, charts, and AI insights.
+            {dataset
+              ? `${dataset.fileName} has ${dataset.rowCount.toLocaleString("en-US")} rows and ${dataset.columnCount.toLocaleString("en-US")} columns.`
+              : "Use the Datasets workspace to import data, add context, and start backend analysis."}
           </p>
-          <label className="ap-btn-primary mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-black">
-            <UploadCloud className="w-4 h-4" />
-            Import CSV
-            <input
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) onFile(file);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+          <div className="mt-5 flex flex-col items-center gap-2">
+            {dataset && (
+              <button onClick={dataset.onOpenPreview} className="ap-btn-primary inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-black">
+                Open data preview
+              </button>
+            )}
+            {showUploadActions ? (
+              <label className={`${dataset ? "ap-btn" : "ap-btn-primary"} inline-flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-black`}>
+                <UploadCloud className="w-4 h-4" />
+                {dataset ? "Load new CSV" : "Import CSV"}
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) onFile(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            ) : (
+              <button onClick={onOpenDatasets} className="ap-btn-primary inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-black">
+                Open Datasets
+              </button>
+            )}
+          </div>
         </div>
 
         <ActionCard icon={<MessageSquare className="h-8 w-8" />} title="Ask Adviso AI" detail="Get answers and explanations about your business data." cta="Why did profit decrease?" tone="blue" />
@@ -110,7 +161,7 @@ export default function FirstRunDashboard({
         <section className="ap-card border rounded-2xl p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-black">Recommended next steps</h2>
-            <span className="text-xs font-bold ap-muted">0 / 5 completed</span>
+            <span className="text-xs font-bold ap-muted">{completedSteps} / 5 completed</span>
           </div>
           <div className="divide-y" style={{ borderColor: "var(--ap-border)" }}>
             {nextSteps.map((step, index) => (
@@ -123,7 +174,12 @@ export default function FirstRunDashboard({
                   <div className="truncate text-sm font-black">{step.title}</div>
                   <div className="truncate text-xs ap-muted">{step.detail}</div>
                 </div>
-                <button className="ap-soft-pill rounded-full px-3 py-1.5 text-xs font-black">Start</button>
+                <button
+                  className="ap-soft-pill rounded-full px-3 py-1.5 text-xs font-black"
+                  onClick={index === 0 ? (dataset ? dataset.onOpenPreview : onOpenDatasets) : undefined}
+                >
+                  {index === 0 ? (dataset ? "Preview" : "Open") : "Start"}
+                </button>
               </div>
             ))}
           </div>
@@ -131,14 +187,32 @@ export default function FirstRunDashboard({
 
         <section className="ap-card border rounded-2xl p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-black">{subscription.plan.name === "Free" ? "Trial usage" : "Workspace usage"}</h2>
+            <h2 className="font-black">{subscription.trial?.active ? "Trial usage" : "Workspace usage"}</h2>
             <button className="text-xs font-black text-[#145DFF]">View all usage</button>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <UsageTile label="Dataset uploads" value="0 / 2" detail="uploads used" icon={<Database className="w-7 h-7" />} tone="blue" />
+            <UsageTile
+              label="Dataset uploads"
+              value={dataset ? "1 active" : "0 / 2"}
+              detail={dataset ? dataset.fileName : "uploads used"}
+              icon={<Database className="w-7 h-7" />}
+              tone="blue"
+            />
             <UsageTile label="AI reports" value="0 / 3" detail="reports used" icon={<FileText className="w-7 h-7" />} tone="blue" />
-            <UsageTile label="Workspace" value="1 / 1" detail="active workspace" icon={<Database className="w-7 h-7" />} tone="green" />
-            <UsageTile label={subscription.planId === "free" ? "Days left in trial" : "Plan status"} value={subscription.planId === "free" ? "14" : "Active"} detail={subscription.planId === "free" ? "days remaining" : subscription.plan.monthlyPriceLabel} icon={<ChartDonut className="w-7 h-7" />} tone="orange" />
+            <UsageTile
+              label={dataset ? "Records loaded" : "Workspace"}
+              value={dataset ? dataset.rowCount.toLocaleString("en-US") : "1 / 1"}
+              detail={dataset ? `${dataset.activeColumnCount} active columns` : "active workspace"}
+              icon={<Database className="w-7 h-7" />}
+              tone="green"
+            />
+            <UsageTile
+              label={dataset ? "Plan status" : subscription.trial?.active ? "Days left in trial" : "Plan status"}
+              value={dataset ? (dataset.backendConnected ? "Synced" : "Local") : subscription.trial?.active ? String(trialDaysRemaining) : "Active"}
+              detail={dataset ? (subscription.trial?.active ? "Free Trial" : subscription.plan.name) : subscription.trial?.active ? "days remaining" : subscription.plan.monthlyPriceLabel}
+              icon={<ChartDonut className="w-7 h-7" />}
+              tone="orange"
+            />
           </div>
         </section>
       </div>
@@ -150,10 +224,10 @@ export default function FirstRunDashboard({
             <button className="text-xs font-black text-[#145DFF]">View full dashboard</button>
           </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <MiniMetricCard label="Revenue" value="0 -" />
-            <MiniMetricCard label="Profit Margin" value="0% -" />
-            <MiniMetricCard label="Churn Rate" value="0% -" />
-            <MiniMetricCard label="Burn Rate" value="0 -" />
+            <MiniMetricCard label={dataset ? "Rows" : "Revenue"} value={dataset ? dataset.rowCount.toLocaleString("en-US") : "0 -"} />
+            <MiniMetricCard label={dataset ? "Columns" : "Profit Margin"} value={dataset ? dataset.columnCount.toLocaleString("en-US") : "0% -"} />
+            <MiniMetricCard label={dataset ? "Quality" : "Churn Rate"} value={dataset ? `${dataset.qualityScore}%` : "0% -"} />
+            <MiniMetricCard label={dataset ? "Missing Cells" : "Burn Rate"} value={dataset ? dataset.missingCells.toLocaleString("en-US") : "0 -"} />
           </div>
           <div className="ap-kpi-chart-panel mt-5 h-44 rounded-2xl border p-4">
             <ResponsiveContainer width="100%" height="100%">
@@ -167,7 +241,7 @@ export default function FirstRunDashboard({
           </div>
           <div className="-mt-24 flex justify-center">
             <div className="ap-floating-label rounded-xl px-5 py-3 text-sm font-bold shadow-sm backdrop-blur">
-              Upload a dataset to see your trends
+              {dataset ? `${dataset.fileName} is ready for preview` : "Upload a dataset to see your trends"}
             </div>
           </div>
         </section>
@@ -179,22 +253,28 @@ export default function FirstRunDashboard({
             <span className="ap-soft-badge rounded-full px-2 py-0.5 text-[10px] font-black">Beta</span>
           </div>
           <div className="ap-ai-callout rounded-2xl border p-4">
-            <div className="text-sm font-black text-[var(--ap-text)]">Revenue signals are waiting for your first dataset.</div>
+            <div className="text-sm font-black text-[var(--ap-text)]">
+              {dataset ? "Dataset is ready for backend AI analysis." : "Revenue signals are waiting for your first dataset."}
+            </div>
             <div className="mt-3 flex items-center justify-between text-xs">
               <span className="ap-muted">Confidence</span>
-              <span className="font-black text-emerald-600">Ready after upload</span>
+              <span className="font-black text-emerald-600">{dataset ? "Ready now" : "Ready after upload"}</span>
             </div>
           </div>
           <div className="mt-4 space-y-2 text-sm">
             <div className="font-black">What you can do</div>
             <ul className="space-y-2 text-xs leading-5 ap-muted">
-              <li>Upload a CSV to generate KPI summaries.</li>
+              <li>{dataset ? "Open Data Preview to inspect rows and schema." : "Upload a CSV to generate KPI summaries."}</li>
               <li>Ask follow-up questions in Data Chat.</li>
               <li>Build a decision brief for your team.</li>
             </ul>
           </div>
-          <button className="mt-5 w-full rounded-xl border px-4 py-3 text-sm font-black text-[#145DFF]" style={{ borderColor: "var(--ap-border)" }}>
-            Ask for more insights
+          <button
+            className="mt-5 w-full rounded-xl border px-4 py-3 text-sm font-black text-[#145DFF]"
+            style={{ borderColor: "var(--ap-border)" }}
+            onClick={dataset ? dataset.onGenerateInsights : undefined}
+          >
+            {dataset ? "Generate dataset insight" : "Ask for more insights"}
           </button>
         </section>
 

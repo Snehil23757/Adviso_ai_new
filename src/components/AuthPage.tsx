@@ -25,17 +25,38 @@ type ThemeMode = "light" | "dark";
 type AuthMode = "login" | "register" | "forgot";
 
 interface AuthPageProps {
-  initialMode: "login" | "register";
+  initialMode: AuthMode;
   onSuccess: () => void;
   onBack: () => void;
+  onNavigateAuth?: (mode: AuthMode) => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
 }
 
+function firebaseErrorCode(error: unknown) {
+  return typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code) : "";
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim());
+}
+
+function shouldHideResetError(error: unknown) {
+  return firebaseErrorCode(error).includes("user-not-found");
+}
+
 function authErrorMessage(error: unknown, mode: AuthMode) {
-  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code) : "";
+  const code = firebaseErrorCode(error);
   const rawMessage = error instanceof Error ? error.message : "";
   const normalized = `${code} ${rawMessage}`.toLowerCase();
+
+  if (mode === "forgot") {
+    if (code.includes("invalid-email")) return "Please enter a valid email address.";
+    if (code.includes("too-many-requests")) return "Too many reset attempts. Please wait a moment and try again.";
+    if (code.includes("network-request-failed")) return "Network error. Check your connection and try again.";
+    if (code.includes("operation-not-allowed")) return "Password reset is not available right now. Please contact support.";
+    return "We could not send a reset link right now. Please try again in a moment.";
+  }
 
   if (
     code.includes("invalid-credential") ||
@@ -88,11 +109,10 @@ function authErrorMessage(error: unknown, mode: AuthMode) {
   }
 
   if (mode === "register") return "We could not create your account. Please check your details and try again.";
-  if (mode === "forgot") return "We could not send a reset link. Please check the email and try again.";
   return code ? `We could not sign you in (${code}). Please try again or contact support.` : "We could not sign you in. Please check your details and try again.";
 }
 
-export default function AuthPage({ initialMode, onSuccess, onBack, theme, onToggleTheme }: AuthPageProps) {
+export default function AuthPage({ initialMode, onSuccess, onBack, onNavigateAuth, theme, onToggleTheme }: AuthPageProps) {
   const { authReady, signInEmail, registerEmail, signInGoogle, resetPassword } = useAuth();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [fullName, setFullName] = useState("");
@@ -103,15 +123,21 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [resetSent, setResetSent] = useState(false);
   const isDark = theme === "dark";
 
   const resetUi = () => {
     setError("");
     setNotice("");
+    setResetSent(false);
   };
 
   const switchMode = (nextMode: AuthMode) => {
     resetUi();
+    if (onNavigateAuth) {
+      onNavigateAuth(nextMode);
+      return;
+    }
     setMode(nextMode);
   };
 
@@ -123,6 +149,11 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
       setError("Secure sign-in is not available right now. Please contact support.");
       return;
     }
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
     if (mode === "register" && password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -131,19 +162,26 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
     setIsSubmitting(true);
     try {
       if (mode === "forgot") {
-        await resetPassword(email);
-        setNotice("Password reset email sent. Check your inbox and spam folder.");
+        await resetPassword(normalizedEmail);
+        setResetSent(true);
+        setNotice("Password reset instructions have been sent to your email.");
         return;
       }
 
       if (mode === "register") {
-        await registerEmail(fullName.trim(), email.trim(), password);
+        await registerEmail(fullName.trim(), normalizedEmail, password);
         setNotice("Account created. A verification email has been sent to your inbox.");
       } else {
-        await signInEmail(email.trim(), password);
+        await signInEmail(normalizedEmail, password);
       }
       onSuccess();
     } catch (err) {
+      console.warn("Authentication request failed.", err);
+      if (mode === "forgot" && shouldHideResetError(err)) {
+        setResetSent(true);
+        setNotice("Password reset instructions have been sent to your email.");
+        return;
+      }
       setError(authErrorMessage(err, mode));
     } finally {
       setIsSubmitting(false);
@@ -449,6 +487,36 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
                   </>
                 )}
 
+                {mode === "forgot" && resetSent ? (
+                  <motion.div
+                    className="space-y-6"
+                    initial={{ opacity: 0, y: 16, filter: "blur(8px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <div
+                      className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-5 text-emerald-500"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <div className="flex items-start gap-3">
+                        <CheckCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                        <div>
+                          <p className="font-black">Password reset instructions have been sent to your email.</p>
+                          <p className="mt-2 text-sm font-semibold opacity-85">Please check your inbox and spam folder.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => switchMode("login")}
+                      className="flex h-14 w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#145DFF] to-[#0B3FCC] text-sm font-black text-white shadow-[0_18px_42px_rgba(20,93,255,0.34)] transition hover:-translate-y-0.5"
+                    >
+                      Back to Sign In
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </motion.div>
+                ) : (
                 <motion.form onSubmit={handleSubmit} className="space-y-5" layout>
                   {mode === "register" && (
                     <label className="block">
@@ -486,17 +554,8 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
 
                   {mode !== "forgot" && (
                     <label className="block">
-                      <span className={`mb-2 flex items-center justify-between text-sm font-black ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                      <span className={`mb-2 block text-sm font-black ${isDark ? "text-slate-300" : "text-slate-700"}`}>
                         Password
-                        {mode === "login" && (
-                          <button
-                            type="button"
-                            onClick={() => switchMode("forgot")}
-                            className="text-xs font-black text-blue-500 hover:underline"
-                          >
-                            Forgot password?
-                          </button>
-                        )}
                       </span>
                       <div className="relative">
                         <Key className={`absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${mutedText}`} />
@@ -510,6 +569,17 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
                           className={`h-14 w-full rounded-xl border py-0 pl-12 pr-4 text-sm font-semibold outline-none transition focus:ring-4 ${inputClass}`}
                         />
                       </div>
+                      {mode === "login" && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => switchMode("forgot")}
+                            className="text-xs font-black text-blue-500 hover:underline"
+                          >
+                            Forgot Password?
+                          </button>
+                        </div>
+                      )}
                     </label>
                   )}
 
@@ -553,12 +623,12 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
                   )}
 
                   {error && (
-                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-500">
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-500" role="alert">
                       {error}
                     </div>
                   )}
                   {notice && (
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-500">
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-500" role="status" aria-live="polite">
                       {notice}
                     </div>
                   )}
@@ -568,10 +638,12 @@ export default function AuthPage({ initialMode, onSuccess, onBack, theme, onTogg
                     disabled={isSubmitting || !authReady}
                     className="flex h-14 w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#145DFF] to-[#0B3FCC] text-sm font-black text-white shadow-[0_18px_42px_rgba(20,93,255,0.34)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
                   >
+                    {isSubmitting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />}
                     {actionText}
                     {!isSubmitting && <ArrowRight className="h-4 w-4" />}
                   </button>
                 </motion.form>
+                )}
 
                 {!authReady && (
                   <div className={`mt-5 rounded-xl border px-4 py-3 text-xs leading-5 ${isDark ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-amber-200 bg-amber-50 text-amber-800"}`}>

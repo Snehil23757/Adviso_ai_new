@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useScroll, useTransform, useSpring, useMotionValueEvent } from "motion/react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { 
   SystemBootScreen, 
   ConnectedDataModule,
@@ -12,8 +13,21 @@ import {
   LAPTOP_STORY_COPY
 } from "./DashboardModules";
 import NetworkBackground from "./NetworkBackground";
+import { markShowcaseViewed, shouldUseCompactShowcase } from "../lib/sessionShowcase";
 
 const SCENE_THRESHOLDS = [0, 0.13, 0.26, 0.39, 0.51, 0.64, 0.76, 0.9] as const;
+const LAPTOP_SHOWCASE_SESSION_KEY = "adviso:laptop-showcase:viewed:v1";
+
+const LAPTOP_COMPACT_SCENES = [
+  { copy: LAPTOP_STORY_COPY[0], render: () => <SystemBootScreen progress={1} /> },
+  { copy: LAPTOP_STORY_COPY[1], render: () => <ConnectedDataModule /> },
+  { copy: LAPTOP_STORY_COPY[2], render: () => <AdaptiveWorkspaceModule /> },
+  { copy: LAPTOP_STORY_COPY[3], render: () => <AnomalyDetectionModule /> },
+  { copy: LAPTOP_STORY_COPY[4], render: () => <DeepDiveAnalyticsModule /> },
+  { copy: LAPTOP_STORY_COPY[5], render: () => <ExplainableAIModule /> },
+  { copy: LAPTOP_STORY_COPY[6], render: () => <SecureWorkspaceModule /> },
+  { copy: LAPTOP_STORY_COPY[7], render: () => <FinalRevealModule /> },
+];
 
 function sceneIndexFromProgress(progress: number) {
   let index = 0;
@@ -25,6 +39,12 @@ function sceneIndexFromProgress(progress: number) {
 
 export default function LaptopScene() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const compactContentRef = useRef<HTMLDivElement>(null);
+  const completedRef = useRef(false);
+  const scrollSnapshotRef = useRef<{ sectionTop: number; bottomViewportY: number } | null>(null);
+  const lastScrollYRef = useRef(typeof window === "undefined" ? 0 : window.scrollY);
+  const [compactMode, setCompactMode] = useState(() => shouldUseCompactShowcase(LAPTOP_SHOWCASE_SESSION_KEY));
+  const [preservedHeight, setPreservedHeight] = useState<number | null>(null);
   
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -40,12 +60,84 @@ export default function LaptopScene() {
   // Calculate Boot Progress for Scene 1 (0 to 0.10)
   const [bootPercent, setBootPercent] = useState(0);
   const [activeScene, setActiveScene] = useState(0);
+
+  const activateCompactMode = useCallback(() => {
+    if (compactMode || !containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const sectionTop = rect.top + window.scrollY;
+    scrollSnapshotRef.current = {
+      sectionTop,
+      bottomViewportY: Math.max(80, Math.min(window.innerHeight * 0.9, rect.bottom)),
+    };
+    setPreservedHeight(rect.height);
+    setCompactMode(true);
+  }, [compactMode]);
+
+  useLayoutEffect(() => {
+    if (!compactMode || !containerRef.current || !scrollSnapshotRef.current) return;
+
+    const { sectionTop, bottomViewportY } = scrollSnapshotRef.current;
+    const newHeight = compactContentRef.current?.getBoundingClientRect().height || containerRef.current.getBoundingClientRect().height;
+    scrollSnapshotRef.current = null;
+    const nextScrollTop = Math.max(0, sectionTop + newHeight - bottomViewportY);
+    window.scrollTo({ top: nextScrollTop, left: window.scrollX, behavior: "auto" });
+    const frame = window.requestAnimationFrame(() => {
+      setPreservedHeight(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [compactMode]);
+
+  useEffect(() => {
+    if (compactMode || !containerRef.current) return undefined;
+
+    const section = containerRef.current;
+    const checkPassedSection = () => {
+      const currentScrollY = window.scrollY;
+      const isScrollingUp = currentScrollY < lastScrollYRef.current;
+      lastScrollYRef.current = currentScrollY;
+      const rect = section.getBoundingClientRect();
+      if (rect.bottom <= window.innerHeight * 0.9) {
+        if (!completedRef.current) {
+          completedRef.current = true;
+          markShowcaseViewed(LAPTOP_SHOWCASE_SESSION_KEY);
+        }
+        return;
+      }
+
+      if (isScrollingUp && completedRef.current && rect.bottom > 0 && rect.top < window.innerHeight) {
+        activateCompactMode();
+      }
+    };
+
+    window.addEventListener("scroll", checkPassedSection, { passive: true });
+    window.addEventListener("resize", checkPassedSection);
+    checkPassedSection();
+
+    return () => {
+      window.removeEventListener("scroll", checkPassedSection);
+      window.removeEventListener("resize", checkPassedSection);
+    };
+  }, [activateCompactMode, compactMode]);
+
+  useMotionValueEvent(scrollYProgress, "change", (latest) => {
+    if (latest >= 0.96 && !completedRef.current) {
+      completedRef.current = true;
+      markShowcaseViewed(LAPTOP_SHOWCASE_SESSION_KEY);
+    }
+  });
+
   useMotionValueEvent(smoothProgress, "change", (latest) => {
     // Phase 1: 0 to 0.125
     const calculated = latest / 0.10;
     setBootPercent(Math.min(1, Math.max(0, calculated)));
     const nextScene = sceneIndexFromProgress(latest);
     setActiveScene((current) => (current === nextScene ? current : nextScene));
+
+    if (latest >= 0.985 && !completedRef.current) {
+      completedRef.current = true;
+      markShowcaseViewed(LAPTOP_SHOWCASE_SESSION_KEY);
+    }
   });
 
   // STEP BY STEP ZOOM SEQUENCE (16-stage domain mapped logically to 8 sections)
@@ -92,6 +184,21 @@ export default function LaptopScene() {
   );
 
   const frameOpacity = useTransform(smoothProgress, [0, 1], [1, 1]);
+  const scrollHelperOpacity = useTransform(smoothProgress, [0, 0.05], [1, 0]);
+
+  if (compactMode) {
+    return (
+      <div
+        ref={containerRef}
+        className="relative w-full bg-brand-background"
+        style={preservedHeight ? { minHeight: preservedHeight } : undefined}
+      >
+        <div ref={compactContentRef}>
+          <CompactLaptopShowcase />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -221,7 +328,7 @@ export default function LaptopScene() {
 
         {/* Global Scroll Direction Helper */}
         <motion.div 
-           style={{ opacity: useTransform(smoothProgress, [0, 0.05], [1, 0]) }}
+           style={{ opacity: scrollHelperOpacity }}
            className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none"
         >
           <span className="text-zinc-500 text-[10px] font-mono animate-pulse uppercase tracking-[0.2em]">Scroll To Activate</span>
@@ -230,5 +337,142 @@ export default function LaptopScene() {
 
       </div>
     </div>
+  );
+}
+
+function CompactLaptopShowcase() {
+  const [active, setActive] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const activeScene = LAPTOP_COMPACT_SCENES[active];
+
+  const goTo = useCallback((next: number) => {
+    setActive((next + LAPTOP_COMPACT_SCENES.length) % LAPTOP_COMPACT_SCENES.length);
+  }, []);
+
+  const next = useCallback(() => goTo(active + 1), [active, goTo]);
+  const previous = useCallback(() => goTo(active - 1), [active, goTo]);
+
+  useEffect(() => {
+    if (isPaused) return undefined;
+    const timer = window.setInterval(() => {
+      setActive((current) => (current + 1) % LAPTOP_COMPACT_SCENES.length);
+    }, 4400);
+    return () => window.clearInterval(timer);
+  }, [isPaused]);
+
+  return (
+    <section
+      className="adviso-laptop-stage relative isolate flex min-h-[92vh] items-center overflow-hidden px-6 py-24 md:px-12 lg:px-16"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
+      <NetworkBackground active />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_62%_36%,rgba(20,93,255,0.18),transparent_34%),linear-gradient(180deg,transparent_0%,rgba(2,4,10,0.18)_100%)]" />
+
+      <div className="relative z-10 mx-auto grid w-full max-w-[82rem] items-center gap-10 lg:grid-cols-[0.82fr_1.18fr]">
+        <motion.div
+          initial={{ opacity: 0, y: 22, filter: "blur(12px)" }}
+          whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          viewport={{ once: true, amount: 0.35 }}
+          transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-xl"
+        >
+          <div className="adviso-laptop-copy-eyebrow mb-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#145DFF] shadow-[0_0_18px_rgba(20,93,255,0.72)]" />
+            Product Walkthrough
+          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeScene.copy.title}
+              initial={{ opacity: 0, y: 18, filter: "blur(10px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: -14, filter: "blur(10px)" }}
+              transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <p className="adviso-laptop-copy-eyebrow mb-4 text-[10px] font-black uppercase tracking-[0.22em]">
+                {activeScene.copy.eyebrow}
+              </p>
+              <h2 className="adviso-laptop-copy-title text-4xl font-black leading-[1.03] tracking-tight md:text-5xl">
+                {activeScene.copy.title}
+              </h2>
+              <p className="adviso-laptop-copy-body mt-5 text-base font-semibold leading-7 md:text-lg">
+                {activeScene.copy.body}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+
+          <div className="mt-8 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={previous}
+              className="grid h-11 w-11 place-items-center rounded-full border border-brand-border bg-brand-surface/80 text-brand-text-primary shadow-sm transition hover:border-brand-primary/35 hover:text-brand-primary"
+              aria-label="Previous laptop showcase screen"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={next}
+              className="grid h-11 w-11 place-items-center rounded-full border border-brand-border bg-brand-surface/80 text-brand-text-primary shadow-sm transition hover:border-brand-primary/35 hover:text-brand-primary"
+              aria-label="Next laptop showcase screen"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </button>
+            <div className="ml-2 flex items-center gap-2">
+              {LAPTOP_COMPACT_SCENES.map((scene, index) => (
+                <button
+                  key={scene.copy.title}
+                  type="button"
+                  onClick={() => goTo(index)}
+                  className={`h-2.5 rounded-full transition-all ${
+                    index === active ? "w-9 bg-[#145DFF] shadow-[0_0_18px_rgba(20,93,255,0.42)]" : "w-2.5 bg-brand-text-secondary/35 hover:bg-brand-primary/55"
+                  }`}
+                  aria-label={`Show ${scene.copy.eyebrow}`}
+                />
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 24 }}
+          whileInView={{ opacity: 1, scale: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.35 }}
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          className="relative"
+        >
+          <div className="absolute inset-8 rounded-[2.5rem] bg-brand-primary/20 blur-[80px]" />
+          <motion.div
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.18}
+            onDragEnd={(_, info) => {
+              if (info.offset.x < -45) next();
+              if (info.offset.x > 45) previous();
+            }}
+            className="relative mx-auto aspect-[1.6] w-full max-w-[760px] cursor-grab active:cursor-grabbing"
+          >
+            <div className="adviso-laptop-frame pointer-events-none absolute inset-0 z-20 rounded-[3%]" />
+            <div className="absolute left-[1.5%] right-[1.5%] top-[1.5%] bottom-[4%] z-30 overflow-hidden rounded-[1.5%]">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={active}
+                  className="adviso-laptop-screen absolute inset-0 overflow-hidden"
+                  initial={{ opacity: 0, x: 42, scale: 1.015 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: -42, scale: 0.985 }}
+                  transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {activeScene.render()}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+            <div className="adviso-laptop-base pointer-events-none absolute left-[-2%] right-[-2%] top-[99%] z-10 flex h-[2.5%] min-h-[8px] max-h-[24px] justify-center rounded-b-[20px]">
+              <div className="h-[60%] w-[12%] rounded-b-md bg-[#2d3545] shadow-[inset_0_4px_8px_rgba(0,0,0,0.4)]" />
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
   );
 }
