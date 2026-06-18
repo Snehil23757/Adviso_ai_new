@@ -69,6 +69,7 @@ import { checkoutPlanForId } from "../subscriptions/checkoutPlans";
 import type { DashboardTabId, FeatureKey, PlanDefinition, PlanId } from "../subscriptions/permissions";
 import AccountSettingsPage from "./platform/AccountSettingsPage";
 import AIInsightsPage from "./platform/AIInsightsPage";
+import DatasetIntelligencePage from "./platform/DatasetIntelligencePage";
 import { ChatTab, type ChatContextPayload } from "./platform/ChatTab";
 import DataExplorerPage from "./platform/DataExplorerPage";
 import DatasetsPage, { type DatasetContextPayload } from "./platform/DatasetsPage";
@@ -112,7 +113,7 @@ const PLAN_RANK: Record<PlanId, number> = {
   enterprise: 3,
 };
 
-const FREE_PLATFORM_SERVICE_IDS = new Set<PlatformServiceId>(["home", "datasets", "data-preview", "account-settings", "support-center"]);
+const FREE_PLATFORM_SERVICE_IDS = new Set<PlatformServiceId>(["home", "datasets", "data-preview", "data-quality", "account-settings", "support-center"]);
 
 interface PlatformDashboardProps {
   userEmail: string;
@@ -1069,6 +1070,7 @@ export default function PlatformDashboard({
   const isDatasetsActive = activeServiceId === "datasets";
   const isHomeLaunchpadActive = isHomeActive;
   const isDataPreviewActive = activeServiceId === "data-preview";
+  const isKpiDiscoveryActive = activeServiceId === "data-quality";
   const isAIInsightsActive = activeServiceId === "ai-insights";
   const isVisualAnalyticsActive = activeServiceId === "visual-analytics";
   const isAIChatActive = activeServiceId === "data-chat";
@@ -2193,7 +2195,7 @@ export default function PlatformDashboard({
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
             >
-              {!isDataPreviewActive && !isAIInsightsActive && !isVisualAnalyticsActive && !isAIChatActive && (
+              {!isDataPreviewActive && !isKpiDiscoveryActive && !isAIInsightsActive && !isVisualAnalyticsActive && !isAIChatActive && (
                 <>
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
@@ -2259,6 +2261,32 @@ export default function PlatformDashboard({
                   onAskQuestion={(question) => requestInsight("overview", question, { fileName, ignoredColumns, source: "data-explorer" })}
                   onOpenTab={selectTab}
                   onExport={exportCsv}
+                />
+              ) : isKpiDiscoveryActive ? (
+                <DatasetIntelligencePage
+                  fileName={fileName}
+                  rowsDetected={data.length}
+                  columnsDetected={allColumns.length}
+                  qualityScore={dataQualityScore(profiles, data.length)}
+                  columns={allColumns}
+                  profiles={profiles}
+                  numericColumns={numericColumns}
+                  categoryColumns={categoryColumns}
+                  insight={insights.kpi}
+                  loading={loadingInsight === "kpi"}
+                  backendWorkspaceId={backendWorkspaceId}
+                  backendDatasetId={activeBackendDatasetId}
+                  onRefresh={() =>
+                    requestInsight(
+                      "kpi",
+                      "Refresh the KPI discovery map for this dataset. Identify what business questions and KPI paths this dataset can answer without producing a dashboard.",
+                      { fileName, ignoredColumns, source: "kpi-discovery" },
+                    )
+                  }
+                  onExploreAnalysis={(tab) => selectTab(tab)}
+                  onPreviewKpis={(question) =>
+                    requestInsight("kpi", question, { fileName, ignoredColumns, source: "kpi-discovery" })
+                  }
                 />
               ) : isAIInsightsActive && !activeTabAllowed ? (
                 <UpgradeRequired

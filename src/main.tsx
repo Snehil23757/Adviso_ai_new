@@ -15,10 +15,21 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      // The app still works normally when service workers are unavailable.
+if ('serviceWorker' in navigator) {
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((registration) => registration.update())
+        .catch(() => {
+          // The app still works normally when service workers are unavailable.
+        });
     });
-  });
+  } else {
+    // A production worker previously installed on localhost can cache source
+    // modules and make Vite serve an obsolete app during local development.
+    void navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())));
+  }
 }

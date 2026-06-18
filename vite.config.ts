@@ -1,20 +1,30 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  // This repository is also opened through E:\\Trae\\Adviso_ai, which can be a
+  // junction to the canonical workspace. Pinning Vite to the config directory
+  // prevents Rollup and the dev server from mixing junction and real paths.
+  const projectRoot = fs.realpathSync(path.resolve(__dirname));
+  if (fs.realpathSync(process.cwd()) !== projectRoot) {
+    process.chdir(projectRoot);
+  }
+  const env = loadEnv(mode, projectRoot, '');
 
   return {
+    root: projectRoot,
+    envDir: projectRoot,
     base: '/',
 
     plugins: [react(), tailwindcss()],
 
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
-        'lucide-react': path.resolve(__dirname, 'src/components/professional-icons.tsx'),
+        '@': projectRoot,
+        'lucide-react': path.resolve(projectRoot, 'src/components/professional-icons.tsx'),
       },
     },
 

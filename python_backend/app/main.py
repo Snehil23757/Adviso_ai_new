@@ -95,6 +95,7 @@ from app.services.email_service import queue_email_verification_email, queue_pas
 from app.services.email_validation import validate_registration_email
 from app.services.executive_insights import build_executive_insights
 from app.services.feedback_service import create_feedback_submission
+from app.services.kpi_discovery import build_kpi_discovery
 from app.services.usage import record_usage, workspace_usage_snapshot
 from app.saas import (
     MODE_TO_FEATURE,
@@ -549,6 +550,32 @@ async def workspace_dataset_executive_insights(workspace_id: int, dataset_id: in
         dataset_id=dataset_id,
         endpoint=f"/api/workspaces/{workspace_id}/datasets/{dataset_id}/executive-insights",
         metadata={"source": payload.get("source")},
+    )
+    return payload
+
+
+@app.get("/api/workspaces/{workspace_id}/datasets/{dataset_id}/kpi-discovery")
+async def workspace_dataset_kpi_discovery(workspace_id: int, dataset_id: int, user: dict = Depends(get_current_user)) -> dict:
+    ensure_feature_access(user, "upload.csv")
+    require_workspace_access(user, workspace_id)
+    payload = build_kpi_discovery(workspace_id, dataset_id)
+    record_usage(
+        workspace_id=workspace_id,
+        user_id=int(user["id"]),
+        metric="kpi.discovery_view",
+        units=1,
+        dataset_id=dataset_id,
+        endpoint=f"/api/workspaces/{workspace_id}/datasets/{dataset_id}/kpi-discovery",
+        metadata={"source": payload.get("source")},
+    )
+    store_audit_event(
+        workspace_id,
+        int(user["id"]),
+        "kpi.discovery_viewed",
+        "dataset",
+        str(dataset_id),
+        {"source": payload.get("source")},
+        event_type="workspace",
     )
     return payload
 

@@ -92,6 +92,12 @@ function Resolve-BackendPort {
 }
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRootItem = Get-Item -LiteralPath $repoRoot
+if ($repoRootItem.Target -and $repoRootItem.Target.Count -gt 0) {
+    $repoRoot = $repoRootItem.Target[0]
+} else {
+    $repoRoot = $repoRootItem.FullName
+}
 $pythonBackendDir = Join-Path $repoRoot "python_backend"
 $requirementsFile = Join-Path $pythonBackendDir "requirements.txt"
 $pythonEnvFile = Join-Path $pythonBackendDir ".env"

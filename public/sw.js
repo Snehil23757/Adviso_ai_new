@@ -1,4 +1,4 @@
-const CACHE_NAME = "adviso-static-v2";
+const CACHE_NAME = "adviso-static-v3";
 const STATIC_ASSET = /\.(?:js|css|png|jpg|jpeg|webp|svg|ico|woff2?)$/i;
 
 self.addEventListener("install", (event) => {
