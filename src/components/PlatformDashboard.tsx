@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BarChart2,
+  Bell,
   BrainCircuit,
   ChartDonut,
   CheckCircle2,
@@ -10,15 +11,18 @@ import {
   DollarSign,
   Download,
   FileSpreadsheet,
+  FileText,
   HelpCircle,
   Leaf,
   Lightbulb,
+  Lock,
   LogOut,
   MessageSquare,
   Moon,
   PieChart as PieChartIcon,
-  Send,
   Shield,
+  Search,
+  Sparkles,
   Sun,
   Table,
   Target,
@@ -26,6 +30,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import Papa from "papaparse";
 import {
   Area,
@@ -55,21 +60,35 @@ import {
 } from "recharts";
 
 import Logo from "./Logo.tsx";
-import { apiUrl } from "../config";
+import { apiFailureMessage, apiUrl, authorizedFetch, readApiJson } from "../config";
+import { auth } from "../firebase.js";
+import { useAuth } from "../lib/AuthContext.tsx";
+import { UpgradeRequired } from "../subscriptions/ProtectedFeature";
+import { usePermissions } from "../subscriptions/SubscriptionProvider";
+import { checkoutPlanForId } from "../subscriptions/checkoutPlans";
+import type { DashboardTabId, FeatureKey, PlanDefinition, PlanId } from "../subscriptions/permissions";
+import AccountSettingsPage from "./platform/AccountSettingsPage";
+import AIInsightsPage from "./platform/AIInsightsPage";
+import DatasetIntelligencePage from "./platform/DatasetIntelligencePage";
+import { ChatTab, type ChatContextPayload } from "./platform/ChatTab";
+import DataExplorerPage from "./platform/DataExplorerPage";
+import DatasetsPage, { type DatasetContextPayload } from "./platform/DatasetsPage";
+import FeedbackWidget from "./platform/FeedbackWidget";
+import FirstRunDashboard from "./platform/FirstRunDashboard";
+import PlatformServicePlaceholder from "./platform/PlatformServicePlaceholder";
+import PlatformSidebar from "./platform/PlatformSidebar";
+import UserAvatar from "./platform/UserAvatar";
+import {
+  PLATFORM_NAV_SECTIONS,
+  PLATFORM_SERVICE_ITEMS,
+  getPlatformService,
+  serviceForDashboardTab,
+  type PlatformServiceId,
+  type PlatformServiceItem,
+} from "./platform/navigation";
 
 type ThemeMode = "dark" | "light";
-type TabType =
-  | "Overview"
-  | "Charts"
-  | "AI"
-  | "Chat"
-  | "Ideas"
-  | "Profit"
-  | "Forecast"
-  | "Budget"
-  | "Sustainability"
-  | "Competitor"
-  | "KPI";
+type TabType = DashboardTabId;
 
 type ChartType =
   | "Line"
@@ -87,11 +106,24 @@ type ChartType =
 
 type ChatMessage = { role: "user" | "assistant"; content: string; source?: string };
 
+const PLAN_RANK: Record<PlanId, number> = {
+  free: 0,
+  go: 1,
+  pro: 2,
+  enterprise: 3,
+};
+
+const FREE_PLATFORM_SERVICE_IDS = new Set<PlatformServiceId>(["home", "datasets", "data-preview", "data-quality", "account-settings", "support-center"]);
+
 interface PlatformDashboardProps {
   userEmail: string;
   onLogout: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  onThemePreferenceChange?: (preference: string) => void;
+  initialTab?: TabType;
+  onTabChange?: (tab: TabType) => void;
+  onUpgradeRequested?: (planId: PlanId) => void;
 }
 
 interface ColumnProfile {
@@ -121,7 +153,118 @@ interface WorkspaceSnapshot {
   allColumns: string[];
   columns: string[];
   fileName: string;
+  fileSizeBytes?: number;
   savedAt: number;
+}
+
+interface BackendWorkspace {
+  id: number;
+  name: string;
+  member_role?: string;
+}
+
+interface BackendDataset {
+  id: number;
+  workspace_id: number;
+  file_name: string;
+  storage_bucket?: string;
+  storage_path?: string;
+  size_bytes?: number;
+  status?: string;
+}
+
+interface BackendDatasetPayload {
+  dataset: BackendDataset;
+  columns: Array<{ name: string; [key: string]: unknown }>;
+  stats?: {
+    sample_rows_json?: Record<string, unknown>[];
+    [key: string]: unknown;
+  };
+  metadata?: {
+    sampled_rows_json?: Record<string, unknown>[];
+    [key: string]: unknown;
+  };
+}
+
+interface BackendJob {
+  id: number;
+  workspace_id: number;
+  dataset_id?: number;
+  type?: string;
+  status?: string;
+  progress?: number;
+  error?: string;
+}
+
+interface BackendJobEvent {
+  id?: number;
+  job_id?: number;
+  workspace_id?: number;
+  event_type?: string;
+  message?: string;
+  payload_json?: Record<string, unknown>;
+  created_at?: string;
+}
+
+interface BackendUploadTarget {
+  mode: "supabase_signed_upload" | "record_only" | string;
+  bucket: string;
+  path: string;
+  signed_url?: string;
+  token?: string;
+  configured?: boolean;
+  message?: string;
+}
+
+interface WorkspaceResponse {
+  success: boolean;
+  workspace: BackendWorkspace;
+}
+
+interface WorkspaceSessionResponse {
+  success: boolean;
+  workspace: BackendWorkspace;
+  session: {
+    active_dataset_id?: number | null;
+    active_chat_id?: number | null;
+    active_page?: string;
+    state_json?: Record<string, unknown>;
+  };
+  dataset?: BackendDatasetPayload | null;
+  chats?: Array<{ id: number; title: string; dataset_id?: number | null }>;
+  active_chat?: { id: number; title: string; dataset_id?: number | null } | null;
+  messages?: Array<{ role: "user" | "assistant" | string; content: string; source?: string }>;
+}
+
+interface WorkspacesResponse {
+  success: boolean;
+  workspaces: BackendWorkspace[];
+}
+
+interface UploadInitResponse {
+  success: boolean;
+  dataset: BackendDataset;
+  upload: BackendUploadTarget;
+}
+
+interface UploadCompleteResponse {
+  success: boolean;
+  dataset: BackendDataset;
+  job: BackendJob;
+}
+
+interface JobResponse {
+  success: boolean;
+  job: BackendJob;
+  events: BackendJobEvent[];
+}
+
+interface WorkspaceChatResponse {
+  success: boolean;
+  answer?: string;
+  source?: ChatMessage["source"];
+  chat?: { id: number; title?: string; dataset_id?: number | null };
+  messages?: Array<{ role: "user" | "assistant" | string; content: string; source?: string }>;
 }
 
 interface MultiValueCandidate {
@@ -166,6 +309,13 @@ const CHART_COLOR = "#2f55d4";
 const CHART_COLOR_2 = "#64748b";
 const CHART_GOOD = "#047857";
 const CHART_WARN = "#b45309";
+const BACKEND_ANALYSIS_ROW_LIMIT = 1500;
+const LOCAL_STORAGE_ROW_LIMIT = 10000;
+const STAGED_ROW_LIMIT = 75000;
+const LOCAL_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;
+const MAX_CSV_UPLOAD_BYTES = 250 * 1024 * 1024;
+const CSV_UPLOAD_CONTENT_TYPE = "text/csv";
+const CSV_UPLOAD_CONTENT_TYPES = new Set(["text/csv", "application/csv", "text/x-csv", "application/vnd.ms-excel", ""]);
 const CHARTS: ChartType[] = [
   "Line",
   "Area",
@@ -181,19 +331,38 @@ const CHARTS: ChartType[] = [
   "Treemap",
 ];
 
-const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
-  { id: "Overview", label: "Overview", icon: <FileSpreadsheet className="w-4 h-4" /> },
-  { id: "Charts", label: "Visual Analytics", icon: <BarChart2 className="w-4 h-4" /> },
-  { id: "AI", label: "AI Insights", icon: <BrainCircuit className="w-4 h-4" /> },
-  { id: "Chat", label: "Data Chat", icon: <MessageSquare className="w-4 h-4" /> },
-  { id: "Ideas", label: "Ideas", icon: <Lightbulb className="w-4 h-4" /> },
-  { id: "Profit", label: "Profit", icon: <DollarSign className="w-4 h-4" /> },
-  { id: "Forecast", label: "Forecast", icon: <TrendingUp className="w-4 h-4" /> },
-  { id: "Budget", label: "Budget", icon: <PieChartIcon className="w-4 h-4" /> },
-  { id: "Sustainability", label: "ESG", icon: <Leaf className="w-4 h-4" /> },
-  { id: "Competitor", label: "Competitor", icon: <Shield className="w-4 h-4" /> },
-  { id: "KPI", label: "KPI", icon: <Target className="w-4 h-4" /> },
-];
+function displayNameFromEmail(email: string) {
+  const local = email.split("@")[0] || "there";
+  return local
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "there";
+}
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 4) return "Hey night owl";
+  if (hour < 6) return "Early start";
+  if (hour < 12) return "Good morning";
+  if (hour < 16) return "Good afternoon";
+  if (hour < 21) return "Good evening";
+  return "Good night";
+}
+
+const INSIGHT_FEATURES: Record<string, FeatureKey> = {
+  overview: "ai.insights",
+  report: "ai.insights",
+  ideas: "ideas.generate",
+  profit: "profit.analyze",
+  forecast: "forecast.run",
+  budget: "budget.plan",
+  sustainability: "esg.analyze",
+  competitor: "competitor.analyze",
+  kpi: "kpi.monitor",
+  chat: "ai.chat",
+};
 
 const TAB_HELP: Record<TabType, { title: string; body: string[] }> = {
   Overview: {
@@ -307,6 +476,65 @@ function formatNumber(value: number | null | undefined, digits = 2) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: digits,
   }).format(value);
+}
+
+function backendId(value: number | string | undefined | null) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function websocketUrl(path: string) {
+  const url = new URL(apiUrl(path), window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
+function signedUploadUrl(upload: BackendUploadTarget) {
+  if (!upload.signed_url) return "";
+  const url = new URL(upload.signed_url, window.location.origin);
+  if (upload.token && !url.searchParams.has("token")) {
+    url.searchParams.set("token", upload.token);
+  }
+  return url.toString();
+}
+
+function progressFromUnknown(value: unknown) {
+  const progress = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : null;
+}
+
+function csvUploadError(file: File) {
+  if (!file.name.toLowerCase().endsWith(".csv")) return "Only .csv files can be uploaded.";
+  if (file.size <= 0) return "The selected CSV file is empty.";
+  if (file.size > MAX_CSV_UPLOAD_BYTES) return "CSV uploads are limited to 250 MB.";
+  if (!CSV_UPLOAD_CONTENT_TYPES.has((file.type || "").toLowerCase())) {
+    return "Only CSV content types are allowed. Please export the file as a CSV and try again.";
+  }
+  return "";
+}
+
+async function uploadFileToSignedTarget(upload: BackendUploadTarget, file: File) {
+  const target = signedUploadUrl(upload);
+  if (!target) return;
+
+  const send = async (method: "POST" | "PUT") =>
+    fetch(target, {
+      method,
+      headers: {
+        "Content-Type": CSV_UPLOAD_CONTENT_TYPE,
+        "x-upsert": "false",
+      },
+      body: file,
+    });
+
+  const first = await send("POST");
+  if (first.ok) return;
+
+  const second = await send("PUT");
+  if (second.ok) return;
+
+  const detail = (await second.text().catch(() => "")) || (await first.text().catch(() => ""));
+  throw new Error(detail || `Supabase upload failed with HTTP ${first.status}.`);
 }
 
 function average(values: number[]) {
@@ -691,6 +919,7 @@ function readWorkspaceSnapshot(userEmail: string): WorkspaceSnapshot | null {
       allColumns,
       columns: parsed.columns.filter((column) => allColumns.includes(column)),
       fileName: parsed.fileName || "restored-workspace.csv",
+      fileSizeBytes: Number(parsed.fileSizeBytes || 0),
       savedAt: Number(parsed.savedAt || Date.now()),
     };
   } catch {
@@ -699,6 +928,7 @@ function readWorkspaceSnapshot(userEmail: string): WorkspaceSnapshot | null {
 }
 
 function saveWorkspaceSnapshot(userEmail: string, snapshot: WorkspaceSnapshot) {
+  if (snapshot.data.length > LOCAL_STORAGE_ROW_LIMIT) return;
   try {
     localStorage.setItem(workspaceStorageKey(userEmail), JSON.stringify(snapshot));
   } catch {
@@ -742,13 +972,37 @@ function sanitizeActiveColumns(activeColumns: string[], allColumns: string[]) {
   return cleaned.length ? cleaned : allColumns;
 }
 
-export default function PlatformDashboard({ userEmail, onLogout, theme, onToggleTheme }: PlatformDashboardProps) {
+export default function PlatformDashboard({
+  userEmail,
+  onLogout,
+  theme,
+  onToggleTheme,
+  onThemePreferenceChange,
+  initialTab = "Overview",
+  onTabChange,
+  onUpgradeRequested,
+}: PlatformDashboardProps) {
+  const { profile: authProfile, user: firebaseUser } = useAuth();
+  const {
+    canAccessTab,
+    canUseFeature,
+    clearUpgradeMessage,
+    nextUpgradePlan,
+    plans,
+    recommendedPlanForFeature,
+    recommendedPlanForTab,
+    requiredFeatureForTab,
+    subscription,
+    upgradeMessage,
+  } = usePermissions();
   const savedWorkspace = useMemo(() => readWorkspaceSnapshot(userEmail), [userEmail]);
-  const [activeTab, setActiveTab] = useState<TabType>("Overview");
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  const [activeServiceId, setActiveServiceId] = useState<PlatformServiceId>(() => serviceForDashboardTab(initialTab).id);
   const [data, setData] = useState<Record<string, unknown>[]>(() => savedWorkspace?.data || []);
   const [allColumns, setAllColumns] = useState<string[]>(() => savedWorkspace?.allColumns || savedWorkspace?.columns || []);
   const [columns, setColumns] = useState<string[]>(() => savedWorkspace?.columns || []);
   const [fileName, setFileName] = useState(() => savedWorkspace?.fileName || "");
+  const [datasetFileSizeBytes, setDatasetFileSizeBytes] = useState(() => savedWorkspace?.fileSizeBytes || 0);
   const [stagedData, setStagedData] = useState<Record<string, unknown>[] | null>(null);
   const [stagedColumns, setStagedColumns] = useState<string[]>([]);
   const [selectedStagedColumns, setSelectedStagedColumns] = useState<string[]>([]);
@@ -768,6 +1022,24 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
   const [loadingInsight, setLoadingInsight] = useState<string | null>(null);
   const [manualRevenue, setManualRevenue] = useState(0);
   const [manualCost, setManualCost] = useState(0);
+  const [showFreePlanPrompt, setShowFreePlanPrompt] = useState(false);
+  const [showPlanPicker, setShowPlanPicker] = useState(false);
+  const [workspaceNotice, setWorkspaceNotice] = useState("");
+  const [backendWorkspaceId, setBackendWorkspaceId] = useState<number | null>(null);
+  const [activeBackendDatasetId, setActiveBackendDatasetId] = useState<number | null>(null);
+  const [activeBackendChatId, setActiveBackendChatId] = useState<number | null>(null);
+  const [backendJobId, setBackendJobId] = useState<number | null>(null);
+  const [backendUploadBusy, setBackendUploadBusy] = useState(false);
+  const [backendUploadProgress, setBackendUploadProgress] = useState<number | null>(null);
+  const [backendUploadMessage, setBackendUploadMessage] = useState("");
+  const [showDatasetValidationModal, setShowDatasetValidationModal] = useState(false);
+  const uploadSocketRef = useRef<WebSocket | null>(null);
+  const jobPollTimerRef = useRef<number | null>(null);
+  const sessionRestoreRef = useRef(false);
+  const bannerStorageKey = `adviso_top_banner_closed_${userEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}`;
+  const [showTopBanner, setShowTopBanner] = useState(() => localStorage.getItem(bannerStorageKey) !== "true");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("adviso_sidebar_collapsed") === "true");
 
   const isDataLoaded = data.length > 0;
   const profiles = useMemo(() => profileColumns(data, columns), [data, columns]);
@@ -791,6 +1063,130 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     () => allColumns.filter((column) => !columns.includes(column)),
     [allColumns, columns],
   );
+  const activeService = getPlatformService(activeServiceId);
+  const isAccountSettingsActive = activeServiceId === "account-settings";
+  const isSupportActive = activeServiceId === "support-center";
+  const isHomeActive = activeServiceId === "home";
+  const isDatasetsActive = activeServiceId === "datasets";
+  const isHomeLaunchpadActive = isHomeActive;
+  const isDataPreviewActive = activeServiceId === "data-preview";
+  const isKpiDiscoveryActive = activeServiceId === "data-quality";
+  const isAIInsightsActive = activeServiceId === "ai-insights";
+  const isVisualAnalyticsActive = activeServiceId === "visual-analytics";
+  const isAIChatActive = activeServiceId === "data-chat";
+  const activeTabAllowed = canAccessTab(activeTab);
+  const freePlanPromptStorageKey = `adviso_free_plan_prompt_seen_v2_${userEmail.toLowerCase().replace(/[^a-z0-9@._-]/g, "_")}`;
+  const currentPlanId = (subscription.planId in PLAN_RANK ? subscription.planId : "free") as PlanId;
+  const upgradePlanOptions = useMemo(
+    () => [plans.go, plans.pro, plans.enterprise].filter((plan) => PLAN_RANK[plan.id] > PLAN_RANK[currentPlanId]),
+    [currentPlanId, plans.enterprise, plans.go, plans.pro],
+  );
+  const hasPlanUpgradeOptions = upgradePlanOptions.length > 0;
+  const selectTab = (tab: TabType) => {
+    setActiveTab(tab);
+    setActiveServiceId(serviceForDashboardTab(tab).id);
+    onTabChange?.(tab);
+  };
+
+  const canAccessService = (item: PlatformServiceItem) => {
+    if (subscription.accessLevel === "full") return true;
+    if (subscription.planId === "free") return FREE_PLATFORM_SERVICE_IDS.has(item.id);
+    if (item.tab) return canAccessTab(item.tab);
+    if (item.feature) return canUseFeature(item.feature);
+    return item.status === "live";
+  };
+
+  const recommendedPlanForService = (item: PlatformServiceItem) => {
+    if (item.tab) return recommendedPlanForTab(item.tab).name;
+    if (item.feature) return recommendedPlanForFeature(item.feature).name;
+    return item.requiredPlan ? plans[item.requiredPlan].name : "Enterprise";
+  };
+
+  const selectService = (item: PlatformServiceItem) => {
+    if (!canAccessService(item)) {
+      openPlanPicker();
+      return;
+    }
+    setActiveServiceId(item.id);
+    setProfileMenuOpen(false);
+    if (item.tab) {
+      setActiveTab(item.tab);
+      onTabChange?.(item.tab);
+    }
+  };
+
+  const closeFreePlanPrompt = () => {
+    if (freePlanPromptStorageKey) {
+      localStorage.setItem(freePlanPromptStorageKey, "true");
+    }
+    setShowFreePlanPrompt(false);
+  };
+
+  const openPlanPicker = () => {
+    if (!hasPlanUpgradeOptions) return;
+    closeFreePlanPrompt();
+    setShowPlanPicker(true);
+  };
+
+  const requestPaidUpgrade = (planId: PlanId) => {
+    if (planId === "free") return;
+    closeFreePlanPrompt();
+    setShowPlanPicker(false);
+    onUpgradeRequested?.(planId);
+  };
+
+  const closeTopBanner = () => {
+    localStorage.setItem(bannerStorageKey, "true");
+    setShowTopBanner(false);
+  };
+
+  const applyWorkspaceSession = (session: WorkspaceSessionResponse) => {
+    const workspaceId = backendId(session.workspace.id);
+    if (workspaceId) setBackendWorkspaceId(workspaceId);
+    const datasetId = backendId(session.session.active_dataset_id || session.dataset?.dataset?.id);
+    if (datasetId) setActiveBackendDatasetId(datasetId);
+    const chatId = backendId(session.session.active_chat_id || session.active_chat?.id);
+    if (chatId) setActiveBackendChatId(chatId);
+
+    const restoredPage = session.session.active_page;
+    if (restoredPage && Object.prototype.hasOwnProperty.call(TAB_HELP, restoredPage)) {
+      selectTab(restoredPage as TabType);
+    }
+
+    const restoredMessages = (session.messages || [])
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .map((message) => ({
+        role: message.role as "user" | "assistant",
+        content: message.content,
+        source: message.source,
+      }));
+    if (restoredMessages.length) setChatMessages(restoredMessages);
+
+    if (!data.length && session.dataset?.dataset) {
+      const restoredRows = session.dataset.metadata?.sampled_rows_json || session.dataset.stats?.sample_rows_json || [];
+      const restoredColumns = session.dataset.columns.map((column) => String(column.name || "")).filter(Boolean);
+      if (restoredRows.length && restoredColumns.length) {
+        setData(restoredRows);
+        setAllColumns(restoredColumns);
+        setColumns(restoredColumns);
+        setFileName(session.dataset.dataset.file_name || "restored-workspace.csv");
+        setDatasetFileSizeBytes(Number(session.dataset.dataset.size_bytes || 0));
+        setWorkspaceNotice("Restored your last workspace from backend metadata and sampled rows.");
+      }
+    }
+  };
+
+  const persistWorkspaceSession = async (patch: Record<string, unknown>) => {
+    if (!backendWorkspaceId) return;
+    try {
+      await authorizedFetch(`/api/workspaces/${backendWorkspaceId}/session`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+    } catch {
+      // Session restoration is a convenience layer; the active workspace remains usable.
+    }
+  };
 
   useEffect(() => {
     if (!data.length || !allColumns.length || !columns.length) return;
@@ -799,9 +1195,74 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
       allColumns,
       columns,
       fileName,
+      fileSizeBytes: datasetFileSizeBytes,
       savedAt: Date.now(),
     });
-  }, [userEmail, data, allColumns, columns, fileName]);
+  }, [userEmail, data, allColumns, columns, fileName, datasetFileSizeBytes]);
+
+  useEffect(() => {
+    if (sessionRestoreRef.current) return;
+    sessionRestoreRef.current = true;
+    const restoreSession = async () => {
+      try {
+        const response = await authorizedFetch("/api/workspaces/session");
+        const session = await readApiJson<WorkspaceSessionResponse>(response);
+        applyWorkspaceSession(session);
+      } catch {
+        // Local snapshot restoration still works if the backend session is unavailable.
+      }
+    };
+    void restoreSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!backendWorkspaceId) return;
+    const timer = window.setTimeout(() => {
+      void persistWorkspaceSession({
+        active_dataset_id: activeBackendDatasetId,
+        active_chat_id: activeBackendChatId,
+        active_page: activeTab,
+        state_json: {
+          service: activeServiceId,
+          chartType,
+          xAxisCol,
+          yAxisCol,
+          secondaryCol,
+          forecastCol,
+          forecastPeriods,
+        },
+      });
+    }, 650);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendWorkspaceId, activeBackendDatasetId, activeBackendChatId, activeTab, activeServiceId, chartType, xAxisCol, yAxisCol, secondaryCol, forecastCol, forecastPeriods]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+    setActiveServiceId(serviceForDashboardTab(initialTab).id);
+  }, [initialTab]);
+
+  useEffect(() => {
+    setShowTopBanner(localStorage.getItem(bannerStorageKey) !== "true");
+  }, [bannerStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem("adviso_sidebar_collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    setShowFreePlanPrompt(false);
+  }, [freePlanPromptStorageKey, hasPlanUpgradeOptions, subscription.loading, subscription.planId]);
+
+  useEffect(() => {
+    return () => {
+      uploadSocketRef.current?.close();
+      if (jobPollTimerRef.current !== null) {
+        window.clearTimeout(jobPollTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!stagedData) return;
@@ -832,30 +1293,51 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     cols = columns,
   ) => {
     if (!rows.length) return;
+    const requiredFeature = INSIGHT_FEATURES[mode] || "ai.insights";
+    if (!canUseFeature(requiredFeature)) {
+      setInsights((prev) => ({
+        ...prev,
+        [mode]: {
+          answer: `Upgrade required: your current ${subscription.plan.name} plan does not include ${requiredFeature.replace(".", " ")}.`,
+          source: "local",
+        },
+      }));
+      return;
+    }
     setLoadingInsight(mode);
     try {
-      const response = await fetch(apiUrl("/api/dataset/insights"), {
+      const workspaceInsightPath =
+        backendWorkspaceId && activeBackendDatasetId
+          ? `/api/workspaces/${backendWorkspaceId}/datasets/${activeBackendDatasetId}/insights`
+          : "/api/dataset/insights";
+      const response = await authorizedFetch(workspaceInsightPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
           question,
           context,
+          workspace_id: backendWorkspaceId,
+          dataset_id: activeBackendDatasetId,
+          active_page: activeTab,
           columns: cols,
-          rows: rows.slice(0, 1500),
+          rows: rows.slice(0, BACKEND_ANALYSIS_ROW_LIMIT),
         }),
       });
-      if (!response.ok) throw new Error("Insight API failed.");
-      const result = await response.json();
+      const result = await readApiJson<{ answer?: string; source?: InsightResult["source"] }>(response);
+      if (!result.answer) throw new Error("The backend returned an empty insight response.");
       setInsights((prev) => ({
         ...prev,
-        [mode]: { answer: result.answer, source: result.source },
+        [mode]: { answer: result.answer, source: result.source || "local" },
       }));
-    } catch {
+    } catch (error) {
       setInsights((prev) => ({
         ...prev,
         [mode]: {
-          answer: "The backend insight service could not be reached. In local development, run .\\start-dev.ps1. In production, verify VITE_API_URL points to the deployed backend and that the backend allows your Firebase domain in CORS.",
+          answer: apiFailureMessage(
+            error,
+            "The insight service could not be reached. Please retry, or contact support if the issue continues.",
+          ),
           source: "local",
         },
       }));
@@ -864,15 +1346,209 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
     }
   };
 
-  const processFile = (file: File) => {
+  const clearBackendWatchers = () => {
+    uploadSocketRef.current?.close();
+    uploadSocketRef.current = null;
+    if (jobPollTimerRef.current !== null) {
+      window.clearTimeout(jobPollTimerRef.current);
+      jobPollTimerRef.current = null;
+    }
+  };
+
+  const ensureBackendWorkspace = async () => {
+    if (backendWorkspaceId) return backendWorkspaceId;
+
+    const listResponse = await authorizedFetch("/api/workspaces");
+    const list = await readApiJson<WorkspacesResponse>(listResponse);
+    let workspace = list.workspaces[0];
+
+    if (!workspace) {
+      const createResponse = await authorizedFetch("/api/workspaces", {
+        method: "POST",
+        body: JSON.stringify({ name: "Personal Workspace" }),
+      });
+      const created = await readApiJson<WorkspaceResponse>(createResponse);
+      workspace = created.workspace;
+    }
+
+    const id = backendId(workspace.id);
+    if (!id) throw new Error("The backend did not return a valid workspace id.");
+    setBackendWorkspaceId(id);
+    return id;
+  };
+
+  const applyBackendJobEvent = (event: BackendJobEvent, expectedJobId: number) => {
+    if (event.job_id && backendId(event.job_id) !== expectedJobId) return;
+
+    const payload = event.payload_json && typeof event.payload_json === "object" ? event.payload_json : {};
+    const progress = progressFromUnknown(payload.progress);
+    if (progress !== null) {
+      setBackendUploadProgress(progress);
+    } else if (event.event_type === "started") {
+      setBackendUploadProgress((current) => Math.max(current || 0, 5));
+    } else if (event.event_type === "completed") {
+      setBackendUploadProgress(100);
+    }
+
+    if (event.message) setBackendUploadMessage(event.message);
+    if (event.event_type === "completed") {
+      setBackendUploadBusy(false);
+      setWorkspaceNotice("Backend profiling is complete. Adviso AI saved metadata, column statistics, and summaries for this dataset.");
+    }
+    if (event.event_type === "failed") {
+      setBackendUploadBusy(false);
+      setWorkspaceNotice(event.message || "Backend CSV processing failed. Check the worker logs and retry the upload.");
+    }
+  };
+
+  const pollBackendJob = (workspaceId: number, jobId: number) => {
+    if (jobPollTimerRef.current !== null) {
+      window.clearTimeout(jobPollTimerRef.current);
+      jobPollTimerRef.current = null;
+    }
+
+    const poll = async () => {
+      try {
+        const response = await authorizedFetch(`/api/workspaces/${workspaceId}/jobs/${jobId}`);
+        const result = await readApiJson<JobResponse>(response);
+        const jobProgress = progressFromUnknown(result.job.progress);
+        const latestEvent = result.events[result.events.length - 1];
+        const status = result.job.status || "queued";
+
+        if (jobProgress !== null) setBackendUploadProgress(jobProgress);
+        setBackendUploadMessage(latestEvent?.message || `Dataset processing is ${status}.`);
+
+        const isTerminal = status === "completed" || status === "failed" || status === "cancelled";
+        if (latestEvent) applyBackendJobEvent(latestEvent, jobId);
+        if (isTerminal) {
+          setBackendUploadBusy(false);
+          uploadSocketRef.current?.close();
+          uploadSocketRef.current = null;
+          jobPollTimerRef.current = null;
+          return;
+        }
+      } catch (error) {
+        setBackendUploadMessage(
+          apiFailureMessage(error, "Upload queued, but job progress could not be refreshed yet."),
+        );
+      }
+
+      jobPollTimerRef.current = window.setTimeout(poll, 2200);
+    };
+
+    jobPollTimerRef.current = window.setTimeout(poll, 1000);
+  };
+
+  const watchBackendJob = async (workspaceId: number, jobId: number) => {
+    pollBackendJob(workspaceId, jobId);
+
+    const token = await auth?.currentUser?.getIdToken();
+    if (!token) return;
+
+    const url = new URL(websocketUrl(`/api/ws/workspaces/${workspaceId}`));
+    url.searchParams.set("token", token);
+
+    const socket = new WebSocket(url.toString());
+    uploadSocketRef.current = socket;
+    socket.onmessage = (message) => {
+      try {
+        const event = JSON.parse(message.data) as BackendJobEvent & { type?: string };
+        if (event.type === "connected") return;
+        applyBackendJobEvent(event, jobId);
+      } catch {
+        setBackendUploadMessage("Received an unreadable processing update from the backend.");
+      }
+    };
+    socket.onerror = () => {
+      setBackendUploadMessage("Live progress connection dropped. Falling back to job polling.");
+    };
+    socket.onclose = () => {
+      if (uploadSocketRef.current === socket) uploadSocketRef.current = null;
+    };
+  };
+
+  const startBackendUploadPipeline = async (file: File) => {
+    clearBackendWatchers();
+    setBackendJobId(null);
+    setBackendUploadBusy(true);
+    setBackendUploadProgress(2);
+    setBackendUploadMessage("Creating workspace upload session...");
+
+    try {
+      const workspaceId = await ensureBackendWorkspace();
+      setBackendUploadProgress(8);
+
+      const initResponse = await authorizedFetch(`/api/workspaces/${workspaceId}/uploads/init`, {
+        method: "POST",
+        body: JSON.stringify({
+          file_name: file.name,
+          size_bytes: file.size,
+          content_type: CSV_UPLOAD_CONTENT_TYPE,
+          checksum_sha256: "",
+        }),
+      });
+      const init = await readApiJson<UploadInitResponse>(initResponse);
+      const datasetId = backendId(init.dataset.id);
+      if (!datasetId) throw new Error("The backend did not return a valid dataset id.");
+      setActiveBackendDatasetId(datasetId);
+
+      setBackendUploadProgress(18);
+      if (!init.upload.signed_url) {
+        const message = init.upload.message || "Supabase signed uploads are not configured for this backend.";
+        setBackendUploadMessage(message);
+        setWorkspaceNotice(`${message} The local preview still works for smaller files, but 200MB CSV processing needs Supabase storage and the worker.`);
+        return;
+      }
+
+      setBackendUploadMessage("Uploading CSV to Supabase Storage...");
+      await uploadFileToSignedTarget(init.upload, file);
+      setBackendUploadProgress(58);
+      setBackendUploadMessage("Upload complete. Queueing metadata extraction...");
+
+      const completeResponse = await authorizedFetch(`/api/workspaces/${workspaceId}/uploads/${datasetId}/complete`, {
+        method: "POST",
+        body: JSON.stringify({
+          storage_path: init.upload.path,
+          checksum_sha256: "",
+          size_bytes: file.size,
+        }),
+      });
+      const complete = await readApiJson<UploadCompleteResponse>(completeResponse);
+      const jobId = backendId(complete.job.id);
+      if (!jobId) throw new Error("The backend did not return a valid processing job id.");
+
+      setBackendJobId(jobId);
+      setActiveBackendDatasetId(datasetId);
+      setBackendUploadProgress(progressFromUnknown(complete.job.progress) ?? 62);
+      setBackendUploadMessage("CSV uploaded. Metadata extraction is queued.");
+      setWorkspaceNotice(`Backend upload started for ${file.name}. Adviso AI will process metadata, statistics, and summaries without loading the full CSV in the browser.`);
+      void watchBackendJob(workspaceId, jobId);
+    } catch (error) {
+      const message = apiFailureMessage(error, "The backend upload pipeline could not be started.");
+      setBackendUploadProgress(null);
+      setBackendUploadMessage(message);
+      setWorkspaceNotice(message);
+    } finally {
+      setBackendUploadBusy(false);
+    }
+  };
+
+  const processLocalCsvPreview = (file: File) => {
     Papa.parse<Record<string, unknown>>(file, {
       header: true,
       dynamicTyping: false,
       skipEmptyLines: true,
+      worker: true,
       complete: (results) => {
         const fields = results.meta.fields || [];
-        const defaultColumns = defaultAnalysisColumns(results.data, fields);
-        const detectedMultiValueColumns = detectMultiValueColumns(results.data, fields);
+        const parsedRows = results.data.slice(0, STAGED_ROW_LIMIT);
+        if (results.data.length > STAGED_ROW_LIMIT) {
+          setWorkspaceNotice(`Large CSV detected. Loaded the first ${formatNumber(STAGED_ROW_LIMIT, 0)} rows locally; backend storage can take over for full-dataset processing later.`);
+        } else {
+          setWorkspaceNotice((current) => current.startsWith("Large CSV detected. Loaded") ? "" : current);
+        }
+        const defaultColumns = defaultAnalysisColumns(parsedRows, fields);
+        const detectedMultiValueColumns = detectMultiValueColumns(parsedRows, fields);
         const initialSplitConfigs = detectedMultiValueColumns.reduce<Record<string, MultiValueSplitConfig>>((acc, candidate) => {
           if (!acc[candidate.column]) {
             acc[candidate.column] = {
@@ -886,13 +1562,53 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
           return acc;
         }, {});
         setFileName(file.name);
-        setStagedData(results.data);
+        setStagedData(parsedRows);
         setStagedColumns(fields);
         setSelectedStagedColumns(defaultColumns);
         setStagedSplitConfigs(initialSplitConfigs);
         setPreviewColumn(null);
+        setShowDatasetValidationModal(activeServiceId !== "datasets");
+      },
+      error: (error) => {
+        setWorkspaceNotice(error.message || "The CSV preview could not be parsed locally.");
       },
     });
+  };
+
+  const processFile = (file: File) => {
+    const validationError = csvUploadError(file);
+    if (validationError) {
+      clearBackendWatchers();
+      setBackendJobId(null);
+      setBackendUploadBusy(false);
+      setBackendUploadProgress(null);
+      setBackendUploadMessage(validationError);
+      setWorkspaceNotice(validationError);
+      return;
+    }
+
+    void startBackendUploadPipeline(file);
+    setFileName(file.name);
+    setDatasetFileSizeBytes(file.size);
+
+    if (file.size > LOCAL_PREVIEW_MAX_BYTES) {
+      setStagedData(null);
+      setStagedColumns([]);
+      setSelectedStagedColumns([]);
+      setStagedSplitConfigs({});
+      setPreviewColumn(null);
+      setShowDatasetValidationModal(false);
+      setWorkspaceNotice(`Large CSV detected (${formatNumber(file.size / 1024 / 1024, 1)} MB). It is being sent through the backend upload pipeline instead of local browser parsing.`);
+      return;
+    }
+
+    processLocalCsvPreview(file);
+  };
+
+  const handleCsvFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    if (file) processFile(file);
+    event.currentTarget.value = "";
   };
 
   const confirmImport = () => {
@@ -923,6 +1639,66 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
       stagedPrepared.rows,
       activeColumns,
     );
+  };
+
+  const saveDatasetContext = async (context: DatasetContextPayload) => {
+    if (!activeBackendDatasetId) {
+      setWorkspaceNotice("Dataset context is ready locally. The backend record will be updated after the upload completes.");
+      return;
+    }
+    const workspaceId = await ensureBackendWorkspace();
+    await authorizedFetch(`/api/workspaces/${workspaceId}/datasets/${activeBackendDatasetId}/context`, {
+      method: "PATCH",
+      body: JSON.stringify(context),
+    });
+    setWorkspaceNotice("Dataset context saved to the workspace.");
+  };
+
+  const analyzeDatasetFromDatasetsPage = async (context: DatasetContextPayload) => {
+    await saveDatasetContext(context);
+    if (stagedData) {
+      confirmImport();
+      return;
+    }
+    if (data.length) {
+      await requestInsight("overview", "", { fileName, ignoredColumns, datasetContext: context });
+    }
+  };
+
+  const saveAndViewDataset = async (context: DatasetContextPayload) => {
+    await analyzeDatasetFromDatasetsPage(context);
+    setActiveServiceId("data-preview");
+  };
+
+  const clearActiveDataset = async () => {
+    const datasetId = activeBackendDatasetId;
+    const workspaceId = backendWorkspaceId;
+    if (workspaceId && datasetId) {
+      try {
+        await authorizedFetch(`/api/workspaces/${workspaceId}/datasets/${datasetId}`, { method: "DELETE" });
+      } catch (error) {
+        setWorkspaceNotice(apiFailureMessage(error, "The backend dataset could not be removed, but local workspace data was cleared."));
+      }
+    }
+    clearBackendWatchers();
+    setData([]);
+    setAllColumns([]);
+    setColumns([]);
+    setFileName("");
+    setDatasetFileSizeBytes(0);
+    setStagedData(null);
+    setStagedColumns([]);
+    setSelectedStagedColumns([]);
+    setStagedSplitConfigs({});
+    setPreviewColumn(null);
+    setShowDatasetValidationModal(false);
+    setActiveBackendDatasetId(null);
+    setBackendJobId(null);
+    setBackendUploadBusy(false);
+    setBackendUploadProgress(null);
+    setBackendUploadMessage("");
+    setInsights({});
+    setWorkspaceNotice("Dataset removed from this workspace view.");
   };
 
   const updateAnalysisColumns = (nextColumns: string[]) => {
@@ -965,34 +1741,89 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
   const hypothesis = useMemo(() => hypothesisTest(data, xAxisCol || categoryColumns[0] || "", yAxisCol || numericColumns[0] || ""), [data, xAxisCol, yAxisCol, categoryColumns, numericColumns]);
   const demandRecommendations = useMemo(() => buildDemandRecommendations(data, columns), [data, columns]);
 
-  const handleChatSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const question = chatInput.trim();
+  const submitChatQuestion = async (rawQuestion: string, context: ChatContextPayload = {}) => {
+    const question = rawQuestion.trim();
     if (!question || isChatLoading) return;
-    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
-    setChatInput("");
-    setIsChatLoading(true);
-    try {
-      const response = await fetch(apiUrl("/api/chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, columns, rows: data.slice(0, 1500) }),
-      });
-      if (!response.ok) throw new Error("Chat API failed.");
-      const result = await response.json();
-      setChatMessages((prev) => [...prev, { role: "assistant", content: result.answer, source: result.source }]);
-    } catch {
+    if (!canUseFeature("ai.chat")) {
       setChatMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "The backend chat endpoint is not reachable. In local development, start the Python backend. In production, verify the deployed backend URL and CORS allowed origins.",
+          content: `Upgrade required: your current ${subscription.plan.name} plan does not include AI chat.`,
+          source: "local",
+        },
+      ]);
+      return;
+    }
+    const chatContext = {
+      ...context,
+      file_name: context.file_name || fileName || "uploaded.csv",
+      row_count: context.row_count ?? data.length,
+      active_columns: columns,
+      ignored_columns: ignoredColumns,
+      numeric_columns: numericColumns,
+      category_columns: categoryColumns,
+    };
+    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
+    setChatInput("");
+    setIsChatLoading(true);
+    try {
+      const workspaceChatPath = backendWorkspaceId ? `/api/workspaces/${backendWorkspaceId}/chats/message` : "/api/chat";
+      const response = await authorizedFetch(workspaceChatPath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          columns,
+          rows: data.slice(0, BACKEND_ANALYSIS_ROW_LIMIT),
+          workspace_id: backendWorkspaceId,
+          dataset_id: context.dataset_id ?? activeBackendDatasetId,
+          chat_id: activeBackendChatId,
+          active_page: "AI Chat",
+          context: chatContext,
+        }),
+      });
+      const result = await readApiJson<WorkspaceChatResponse>(response);
+      const nextChatId = backendId(result.chat?.id);
+      if (nextChatId) setActiveBackendChatId(nextChatId);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: result.answer || "The backend returned an empty chat response.",
+          source: result.source || "local",
+        },
+      ]);
+    } catch (error) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: apiFailureMessage(
+            error,
+            "The backend chat endpoint is not reachable. In local development, start the Python backend. In production, verify the deployed backend URL and CORS allowed origins.",
+          ),
           source: "local",
         },
       ]);
     } finally {
       setIsChatLoading(false);
     }
+  };
+
+  const handleChatSubmit = (event: React.FormEvent, context: ChatContextPayload) => {
+    event.preventDefault();
+    void submitChatQuestion(chatInput, context);
+  };
+
+  const handleDirectChatQuestion = (question: string, context: ChatContextPayload) => {
+    void submitChatQuestion(question, context);
+  };
+
+  const handleStartNewChat = () => {
+    setActiveBackendChatId(null);
+    setChatMessages([]);
+    setChatInput("");
   };
 
   const exportCsv = () => {
@@ -1012,63 +1843,276 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
   const revenueValue = yProfile?.numeric?.sum || manualRevenue;
   const costValue = profiles.find((profile) => profile.name === secondaryCol)?.numeric?.sum || manualCost;
   const profitValue = revenueValue - costValue;
+  const handleHeaderUpgrade = () => {
+    openPlanPicker();
+  };
+  const displayName =
+    (authProfile?.full_name || firebaseUser?.displayName || displayNameFromEmail(userEmail)).trim() ||
+    displayNameFromEmail(userEmail);
+  const profileEmail = authProfile?.email || firebaseUser?.email || userEmail;
+  const avatarUrl = authProfile?.profile_picture || firebaseUser?.photoURL || "";
+  const greeting = greetingForNow();
+  const planLabel = subscription.accessLevel === "full" ? "Full access" : subscription.plan.name;
 
   return (
-    <div className={`adviso-platform ${theme} min-h-screen flex flex-col font-sans`}>
-      <header className="ap-header h-16 border-b px-5 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col">
-            <Logo size="md" className="text-[var(--ap-text)]" />
-            <div className="text-[10px] uppercase tracking-[0.18em] ap-muted pl-[3.25rem] -mt-1">Platform workspace</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="ap-btn-primary cursor-pointer text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition">
-            <UploadCloud className="w-4 h-4" />
-            Import CSV
-            <input type="file" accept=".csv" className="hidden" onChange={(event) => event.target.files?.[0] && processFile(event.target.files[0])} />
-          </label>
-          {isDataLoaded && (
-            <button onClick={exportCsv} className="ap-btn text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2">
-              <Download className="w-4 h-4" />
-              Export
+    <div className={`adviso-platform ${theme} flex h-screen min-h-0 flex-col overflow-hidden font-sans`}>
+      {showTopBanner && (
+        <div className="ap-trial-banner h-10 px-4 md:px-6 flex items-center justify-center gap-4 text-sm font-bold relative">
+          <span className="inline-flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            {subscription.accessLevel === "full" ? "Full platform access is active" : subscription.plan.name === "Free" ? "Adviso AI workspace is ready" : `${subscription.plan.name} workspace is active`}
+          </span>
+          <span className="font-black">
+            Explore all features. Upgrade anytime.
+          </span>
+          <span className="hidden md:inline font-medium opacity-90">
+            Pick a higher plan when you need more modules and capacity.
+          </span>
+          {nextUpgradePlan && (
+            <button onClick={handleHeaderUpgrade} className="rounded-lg bg-white px-4 py-1.5 text-xs font-black text-[#145DFF] shadow-sm">
+              View plans
             </button>
           )}
-          <button onClick={onToggleTheme} className="ap-btn text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2">
-            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
-          <div className="hidden md:block text-xs ap-muted px-3 py-2 rounded-lg border" style={{ borderColor: "var(--ap-border)" }}>
-            {userEmail}
-          </div>
-          <button onClick={onLogout} className="ap-btn p-2 rounded-lg" aria-label="Logout">
-            <LogOut className="w-4 h-4" />
+          <button
+            onClick={closeTopBanner}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-white/85 transition hover:bg-white/15 hover:text-white"
+            aria-label="Dismiss workspace banner"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
-      </header>
-
-      <div className="flex flex-1 min-h-0">
-        <aside className="ap-sidebar w-64 border-r p-3 overflow-y-auto hidden lg:block">
-          <div className="text-[10px] uppercase tracking-[0.18em] ap-muted px-2 py-2">Modules</div>
-          <div className="space-y-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                  activeTab === tab.id ? "ap-btn-primary" : "ap-btn"
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
+      )}
+      {upgradeMessage && (
+        <div className="fixed right-4 top-20 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-sm flex items-start gap-3">
+          <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0" style={{ color: "var(--ap-good)" }} />
+          <div className="min-w-0">
+            <div className="text-sm font-black">Subscription updated</div>
+            <div className="text-xs ap-muted mt-1 leading-5">{upgradeMessage}</div>
           </div>
-        </aside>
+          <button onClick={clearUpgradeMessage} className="ap-btn rounded-lg p-1 shrink-0" aria-label="Dismiss subscription update">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
-        <main className="flex-1 min-w-0 overflow-y-auto p-3 xl:p-4">
-          {!isDataLoaded && !stagedData && (
-            <UploadEmptyState
+      {subscription.error && (
+        <div className="fixed right-4 top-20 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-sm">
+          <div className="text-sm font-black">Subscription service unavailable</div>
+          <div className="text-xs ap-muted mt-1 leading-5">
+            Paid access is locked until the backend database session can be verified.
+          </div>
+        </div>
+      )}
+
+      {workspaceNotice && (
+        <div className="fixed left-4 top-20 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-md flex items-start gap-3">
+          <Database className="w-5 h-5 mt-0.5 shrink-0 text-[#145DFF]" />
+          <div className="min-w-0">
+            <div className="text-sm font-black">Large dataset mode</div>
+            <div className="text-xs ap-muted mt-1 leading-5">{workspaceNotice}</div>
+          </div>
+          <button onClick={() => setWorkspaceNotice("")} className="ap-btn rounded-lg p-1 shrink-0" aria-label="Dismiss large dataset notice">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {backendUploadMessage && (
+        <div className="fixed left-4 top-36 z-[90] ap-card border rounded-xl shadow-2xl p-4 max-w-md flex items-start gap-3">
+          <UploadCloud className="w-5 h-5 mt-0.5 shrink-0 text-[#145DFF]" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-black">Dataset upload pipeline</div>
+            <div className="text-xs ap-muted mt-1 leading-5">{backendUploadMessage}</div>
+            {backendUploadProgress !== null && (
+              <div className="mt-3">
+                <div className="h-2 overflow-hidden rounded-full bg-blue-500/10">
+                  <div
+                    className="h-full rounded-full bg-[#145DFF] transition-all duration-500"
+                    style={{ width: `${backendUploadProgress}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[10px] font-bold ap-muted">
+                  <span>{formatNumber(backendUploadProgress, 0)}% complete</span>
+                  {backendJobId && <span>Job #{backendJobId}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              setBackendUploadMessage("");
+              setBackendUploadProgress(null);
+            }}
+            className="ap-btn rounded-lg p-1 shrink-0"
+            aria-label="Dismiss dataset upload status"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showFreePlanPrompt && (
+          <FreePlanChoiceModal
+            plans={upgradePlanOptions}
+            onContinueFree={closeFreePlanPrompt}
+            onUpgrade={requestPaidUpgrade}
+            title="Choose your intelligence level"
+            description="Your Free workspace is ready. Select a paid plan for more modules, or close this and continue on Free."
+            continueLabel="Continue with Free"
+            footerNote="Paid access activates only after verified payment. You can close this and continue with the Free workspace."
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showPlanPicker && hasPlanUpgradeOptions && (
+          <FreePlanChoiceModal
+            plans={upgradePlanOptions}
+            onContinueFree={() => setShowPlanPicker(false)}
+            onUpgrade={requestPaidUpgrade}
+            title={currentPlanId === "free" ? "Choose your intelligence level" : "Upgrade your intelligence level"}
+            description={
+              currentPlanId === "free"
+                ? "Compare GO, PRO, and ENTERPRISE before checkout. Paid access activates only after payment verification."
+                : `${planLabel} is active. Choose a higher tier to unlock more modules and capacity.`
+            }
+            continueLabel="Close"
+            footerNote={`Your current ${planLabel} plan remains active until a verified upgrade payment completes.`}
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="ap-shell flex min-h-0 flex-1 overflow-hidden">
+        <PlatformSidebar
+          sections={PLATFORM_NAV_SECTIONS}
+          activeServiceId={activeServiceId}
+          collapsed={sidebarCollapsed}
+          canAccessItem={canAccessService}
+          recommendedPlanForItem={recommendedPlanForService}
+          onSelect={selectService}
+          onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
+          displayName={displayName}
+          userEmail={profileEmail}
+          avatarUrl={avatarUrl}
+          onAccountClick={() => selectService(getPlatformService("account-settings"))}
+        />
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="ap-header sticky top-0 z-50 h-16 border-b px-4 md:px-6 flex items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="lg:hidden">
+                <Logo size="sm" className="text-[var(--ap-text)]" />
+              </div>
+              <div className="ap-top-search hidden w-full max-w-2xl items-center gap-3 rounded-xl border px-4 py-2.5 md:flex">
+                <Search className="h-4 w-4 ap-muted" />
+                <span className="truncate text-sm ap-muted">Search datasets, reports, KPIs, or ask a question...</span>
+                <span className="ml-auto text-xs ap-muted">Ctrl K</span>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {isDatasetsActive && (
+                <label className={`ap-btn-primary cursor-pointer text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition ${backendUploadBusy ? "opacity-75" : ""}`}>
+                  <UploadCloud className="w-4 h-4" />
+                  {backendUploadBusy ? "Uploading..." : "Import CSV"}
+                  <input type="file" accept=".csv" className="hidden" disabled={backendUploadBusy} onChange={handleCsvFileInput} />
+                </label>
+              )}
+              {isDataLoaded && canUseFeature("export.csv") && (
+                <button onClick={exportCsv} className="ap-btn text-xs font-semibold px-3 py-2.5 rounded-xl flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Export
+                </button>
+              )}
+              <button onClick={onToggleTheme} className="ap-icon-btn" aria-label="Toggle theme">
+                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+              <button className="ap-icon-btn relative" aria-label="Notifications">
+                <Bell className="w-4 h-4" />
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
+              </button>
+              <div className="relative hidden md:block">
+                <button
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                  className="flex items-center gap-3 rounded-xl border bg-white px-2.5 py-1.5 transition hover:border-blue-300"
+                  style={{ borderColor: "var(--ap-border)" }}
+                >
+                  <UserAvatar name={displayName} email={profileEmail} src={avatarUrl} size="sm" />
+                  <div className="hidden text-left xl:block">
+                    <div className="text-xs font-black">{displayName}</div>
+                    <div className="text-[10px] ap-muted">{planLabel} plan</div>
+                  </div>
+                </button>
+                {profileMenuOpen && (
+                  <div className="ap-card absolute right-0 top-12 z-[80] w-72 rounded-2xl border p-3 shadow-2xl">
+                    <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: "var(--ap-border)" }}>
+                      <UserAvatar name={displayName} email={profileEmail} src={avatarUrl} size="md" />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-black">{displayName}</div>
+                        <div className="truncate text-xs ap-muted">{profileEmail}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => selectService(getPlatformService("account-settings"))}
+                      className="mt-3 w-full rounded-xl px-3 py-2.5 text-left text-sm font-black transition hover:bg-blue-500/10"
+                    >
+                      Account settings
+                      <span className="mt-1 block text-xs font-medium ap-muted">Profile, plan, billing, security</span>
+                    </button>
+                    {hasPlanUpgradeOptions && (
+                      <button
+                        onClick={handleHeaderUpgrade}
+                        className="mt-1 w-full rounded-xl px-3 py-2.5 text-left text-sm font-black transition hover:bg-blue-500/10"
+                      >
+                        Upgrade plan
+                        <span className="mt-1 block text-xs font-medium ap-muted">{planLabel} plan is active</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button onClick={onLogout} className="ap-icon-btn" aria-label="Logout">
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </header>
+
+        <main className="ap-dashboard-main min-h-0 min-w-0 flex-1 overflow-y-auto p-4 xl:p-6 scroll-thin">
+          {isAccountSettingsActive && !stagedData && (
+            <AccountSettingsPage
+              fallbackEmail={userEmail}
+              onUpgrade={openPlanPicker}
+              currentTheme={theme}
+              onThemePreferenceChange={onThemePreferenceChange}
+            />
+          )}
+
+          {isSupportActive && !stagedData && <SupportCenterPage displayName={displayName} userEmail={profileEmail} />}
+
+          {!isAccountSettingsActive && !isSupportActive && !stagedData && isHomeLaunchpadActive && (
+            <FirstRunDashboard
+              displayName={displayName}
+              greeting={greeting}
+              subscription={subscription}
+              nextUpgradePlan={nextUpgradePlan}
+              dataset={
+                isDataLoaded
+                  ? {
+                      fileName: fileName || "uploaded.csv",
+                      rowCount: data.length,
+                      columnCount: allColumns.length,
+                      activeColumnCount: columns.length,
+                      missingCells: missingCount,
+                      numericFields: numericColumns.length,
+                      categoryFields: categoryColumns.length,
+                      qualityScore: dataQualityScore(profiles, data.length),
+                      backendConnected: Boolean(activeBackendDatasetId),
+                      onOpenPreview: () => setActiveServiceId("data-preview"),
+                      onGenerateInsights: () => requestInsight("overview", "", { fileName, ignoredColumns }),
+                    }
+                  : undefined
+              }
+              onViewPlans={handleHeaderUpgrade}
               isDragging={isDragging}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -1085,19 +2129,203 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
                 if (file) processFile(file);
               }}
               onFile={(file) => processFile(file)}
+              showUploadActions={false}
+              onOpenDatasets={() => setActiveServiceId("datasets")}
             />
           )}
 
-          {isDataLoaded && (
-            <div className="space-y-4">
-              <nav className="lg:hidden flex gap-2 overflow-x-auto pb-1">
-                {tabs.map((tab) => (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`shrink-0 px-3 py-2 rounded-lg text-xs ${activeTab === tab.id ? "ap-btn-primary" : "ap-btn"}`}>
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
+          {!isAccountSettingsActive && !isSupportActive && isDatasetsActive && (
+            <DatasetsPage
+              displayName={displayName}
+              workspaceName="Adviso Workspace"
+              fileName={fileName}
+              fileSizeBytes={datasetFileSizeBytes}
+              rows={stagedData ? stagedPrepared.rows : data}
+              columns={stagedData ? stagedPrepared.columns : allColumns}
+              activeColumns={stagedData ? selectedStagedColumns : columns}
+              profiles={stagedData ? stagedProfiles : profiles}
+              ignoredColumns={stagedData ? stagedPrepared.columns.filter((column) => !selectedStagedColumns.includes(column)) : ignoredColumns}
+              backendConnected={Boolean(activeBackendDatasetId)}
+              backendUploadBusy={backendUploadBusy}
+              backendUploadProgress={backendUploadProgress}
+              backendUploadMessage={backendUploadMessage}
+              canReviewColumns={Boolean(stagedData)}
+              isDragging={isDragging}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+                const file = event.dataTransfer.files?.[0];
+                if (file) processFile(file);
+              }}
+              onFile={(file) => processFile(file)}
+              onAnalyzeDataset={analyzeDatasetFromDatasetsPage}
+              onReviewColumns={() => {
+                if (stagedData) setShowDatasetValidationModal(true);
+              }}
+              onClearDataset={clearActiveDataset}
+              onSaveDatasetContext={saveDatasetContext}
+              onSaveAndView={saveAndViewDataset}
+              onOpenDataExplorer={() => setActiveServiceId("data-preview")}
+            />
+          )}
 
+          {!isAccountSettingsActive && !isSupportActive && !isDataLoaded && !stagedData && !isHomeLaunchpadActive && !isDatasetsActive && (
+            <PlatformServicePlaceholder
+              service={activeService}
+              locked={!canAccessService(activeService)}
+              currentPlanName={subscription.plan.name}
+              recommendedPlanName={recommendedPlanForService(activeService)}
+              onUpgrade={openPlanPicker}
+            />
+          )}
+
+          {!isAccountSettingsActive && !isSupportActive && !isHomeLaunchpadActive && !isDatasetsActive && isDataLoaded && (
+            <motion.div
+              key={`${activeServiceId}-${activeTab}`}
+              className="space-y-5"
+              initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {!isDataPreviewActive && !isKpiDiscoveryActive && !isAIInsightsActive && !isVisualAnalyticsActive && !isAIChatActive && (
+                <>
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#145DFF]" style={{ borderColor: "var(--ap-border)" }}>
+                        {activeService.icon}
+                        {activeService.backend === "connected" ? "Connected tool" : "Workspace tool"}
+                      </div>
+                      <h1 className="mt-3 text-3xl font-black tracking-tight text-[var(--ap-text)]">
+                        {activeService.label}
+                      </h1>
+                      <p className="mt-1 text-sm ap-muted">
+                        {activeService.description}
+                      </p>
+                      <p className="mt-2 text-xs font-semibold ap-muted">
+                        Active dataset: {fileName || "CSV workspace"} | {formatNumber(data.length, 0)} rows | {formatNumber(columns.length, 0)} active columns
+                      </p>
+                    </div>
+                    <button onClick={() => requestInsight("overview", "", { fileName, ignoredColumns })} className="ap-btn rounded-xl px-4 py-2.5 text-xs font-black inline-flex items-center gap-2 self-start">
+                      <Compass className="h-4 w-4" />
+                      Refresh intelligence
+                    </button>
+                  </div>
+                  <nav className="lg:hidden flex gap-2 overflow-x-auto pb-1">
+                    {PLATFORM_SERVICE_ITEMS.map((item) => {
+                      const locked = !canAccessService(item);
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => selectService(item)}
+                          className={`shrink-0 px-3 py-2 rounded-lg text-xs inline-flex items-center gap-2 ${activeServiceId === item.id ? "ap-btn-primary" : "ap-btn"} ${locked && activeServiceId !== item.id ? "opacity-65" : ""}`}
+                        >
+                          {item.label}
+                          {locked && <Lock className="w-3 h-3" />}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                  <div className="xl:hidden ap-card border rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] ap-muted">Current subscription</div>
+                      <div className="text-sm font-black">{planLabel} plan</div>
+                    </div>
+                    {hasPlanUpgradeOptions && (
+                      <button onClick={handleHeaderUpgrade} className="ap-btn-primary rounded-lg px-3 py-2 text-xs font-black">
+                        View plans
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {isDataPreviewActive ? (
+                <DataExplorerPage
+                  fileName={fileName}
+                  data={data}
+                  columns={columns}
+                  allColumns={allColumns}
+                  profiles={profiles}
+                  numericColumns={numericColumns}
+                  categoryColumns={categoryColumns}
+                  insight={insights.overview}
+                  loading={loadingInsight === "overview"}
+                  onAskQuestion={(question) => requestInsight("overview", question, { fileName, ignoredColumns, source: "data-explorer" })}
+                  onOpenTab={selectTab}
+                  onExport={exportCsv}
+                />
+              ) : isKpiDiscoveryActive ? (
+                <DatasetIntelligencePage
+                  fileName={fileName}
+                  rowsDetected={data.length}
+                  columnsDetected={allColumns.length}
+                  qualityScore={dataQualityScore(profiles, data.length)}
+                  columns={allColumns}
+                  profiles={profiles}
+                  numericColumns={numericColumns}
+                  categoryColumns={categoryColumns}
+                  insight={insights.kpi}
+                  loading={loadingInsight === "kpi"}
+                  backendWorkspaceId={backendWorkspaceId}
+                  backendDatasetId={activeBackendDatasetId}
+                  onRefresh={() =>
+                    requestInsight(
+                      "kpi",
+                      "Refresh the KPI discovery map for this dataset. Identify what business questions and KPI paths this dataset can answer without producing a dashboard.",
+                      { fileName, ignoredColumns, source: "kpi-discovery" },
+                    )
+                  }
+                  onExploreAnalysis={(tab) => selectTab(tab)}
+                  onPreviewKpis={(question) =>
+                    requestInsight("kpi", question, { fileName, ignoredColumns, source: "kpi-discovery" })
+                  }
+                />
+              ) : isAIInsightsActive && !activeTabAllowed ? (
+                <UpgradeRequired
+                  title="Plan access required"
+                  description={`The ${activeTab} workspace is not available on the ${subscription.plan.name} plan.`}
+                  requiredLabel={requiredFeatureForTab(activeTab)}
+                  onUpgradeRequested={() => openPlanPicker()}
+                />
+              ) : isAIInsightsActive ? (
+                <AIInsightsPage
+                  fileName={fileName}
+                  data={data}
+                  columns={columns}
+                  profiles={profiles}
+                  numericColumns={numericColumns}
+                  categoryColumns={categoryColumns}
+                  backendWorkspaceId={backendWorkspaceId}
+                  backendDatasetId={activeBackendDatasetId}
+                  loading={loadingInsight === "report"}
+                  onAskQuestion={(question) => requestInsight("report", question, { fileName, ignoredColumns, source: "ai-insights" })}
+                  onExport={exportCsv}
+                />
+              ) : activeService && !activeService.tab ? (
+                <PlatformServicePlaceholder
+                  service={activeService}
+                  locked={!canAccessService(activeService)}
+                  currentPlanName={subscription.plan.name}
+                  recommendedPlanName={recommendedPlanForService(activeService)}
+                  onUpgrade={openPlanPicker}
+                />
+              ) : !activeTabAllowed ? (
+                <UpgradeRequired
+                  title="Plan access required"
+                  description={`The ${activeTab} workspace is not available on the ${subscription.plan.name} plan.`}
+                  requiredLabel={requiredFeatureForTab(activeTab)}
+                  onUpgradeRequested={() => openPlanPicker()}
+                />
+              ) : (
+                <>
               {activeTab === "Overview" && (
                 <OverviewTab
                   profiles={profiles}
@@ -1165,7 +2393,24 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
               )}
 
               {activeTab === "Chat" && (
-                <ChatTab messages={chatMessages} input={chatInput} setInput={setChatInput} loading={isChatLoading} onSubmit={handleChatSubmit} />
+                <ChatTab
+                  messages={chatMessages}
+                  input={chatInput}
+                  setInput={setChatInput}
+                  loading={isChatLoading}
+                  onSubmit={handleChatSubmit}
+                  onAskQuestion={handleDirectChatQuestion}
+                  onStartNewChat={handleStartNewChat}
+                  fileName={fileName}
+                  rowCount={data.length}
+                  columnCount={columns.length}
+                  columns={columns}
+                  numericColumns={numericColumns}
+                  categoryColumns={categoryColumns}
+                  backendDatasetId={activeBackendDatasetId}
+                  backendChatId={activeBackendChatId}
+                  onRefresh={() => requestInsight("overview", "Refresh dataset intelligence for AI chat context.", { fileName, ignoredColumns, source: "ai-chat" })}
+                />
               )}
 
               {activeTab === "Ideas" && (
@@ -1284,12 +2529,21 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
                   onRun={() => requestInsight("kpi", "Generate KPI commentary and monitoring recommendations from the selected numeric field.", { selectedColumn: forecastCol })}
                 />
               )}
-            </div>
+                </>
+              )}
+            </motion.div>
           )}
         </main>
       </div>
+      </div>
 
-      {stagedData && (
+      <FeedbackWidget
+        userEmail={userEmail}
+        workspaceId={backendWorkspaceId}
+        activePage={activeService?.label || activeTab}
+      />
+
+      {stagedData && showDatasetValidationModal && (
         <DatasetValidationModal
           rows={stagedPrepared.rows}
           columns={stagedPrepared.columns}
@@ -1299,11 +2553,16 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
           previewColumn={previewColumn}
           setPreviewColumn={setPreviewColumn}
           onCancel={() => {
-          setStagedData(null);
-          setStagedColumns([]);
-          setSelectedStagedColumns([]);
-          setStagedSplitConfigs({});
-          setPreviewColumn(null);
+            if (isDatasetsActive) {
+              setShowDatasetValidationModal(false);
+              return;
+            }
+            setStagedData(null);
+            setStagedColumns([]);
+            setSelectedStagedColumns([]);
+            setStagedSplitConfigs({});
+            setPreviewColumn(null);
+            setShowDatasetValidationModal(false);
           }}
           onConfirm={confirmImport}
           theme={theme}
@@ -1314,43 +2573,6 @@ export default function PlatformDashboard({ userEmail, onLogout, theme, onToggle
           setSplitConfigs={setStagedSplitConfigs}
         />
       )}
-    </div>
-  );
-}
-
-function UploadEmptyState({
-  isDragging,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onFile,
-}: {
-  isDragging: boolean;
-  onDragOver: React.DragEventHandler<HTMLDivElement>;
-  onDragLeave: React.DragEventHandler<HTMLDivElement>;
-  onDrop: React.DragEventHandler<HTMLDivElement>;
-  onFile: (file: File) => void;
-}) {
-  return (
-    <div className="min-h-[calc(100vh-7rem)] flex items-center justify-center">
-      <div
-        className={`ap-card border rounded-2xl w-full max-w-5xl p-10 text-center transition ${isDragging ? "ring-4" : ""}`}
-        style={{ boxShadow: "0 24px 70px rgba(15,23,42,.08)" }}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        <Database className="w-12 h-12 mx-auto ap-accent mb-4" />
-        <h1 className="text-3xl font-black tracking-tight mb-2">Import a CSV to start analysis</h1>
-        <p className="ap-muted max-w-2xl mx-auto text-sm leading-relaxed">
-          Upload a CSV and Adviso AI will profile columns, create BI charts, forecast numeric fields, and send dataset summaries to the backend insight engine.
-        </p>
-        <label className="ap-btn-primary inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold mt-7 cursor-pointer">
-          <UploadCloud className="w-4 h-4" />
-          Select CSV file
-          <input type="file" accept=".csv" className="hidden" onChange={(event) => event.target.files?.[0] && onFile(event.target.files[0])} />
-        </label>
-      </div>
     </div>
   );
 }
@@ -1403,6 +2625,252 @@ function MetricCard({ label, value, tone, small }: { label: string; value: strin
         {value}
       </div>
     </div>
+  );
+}
+
+function SupportCenterPage({ displayName, userEmail }: { displayName: string; userEmail: string }) {
+  const mailHref = `mailto:support@adviso.ai?subject=${encodeURIComponent("Adviso AI support request")}&body=${encodeURIComponent(
+    `Name: ${displayName}\nEmail: ${userEmail}\n\nHow can we help?\n`,
+  )}`;
+
+  return (
+    <section className="space-y-5">
+      <div className="ap-card overflow-hidden rounded-2xl border p-6">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#145DFF]" style={{ borderColor: "var(--ap-border)" }}>
+              <HelpCircle className="h-3.5 w-3.5" />
+              Support
+            </div>
+            <h1 className="mt-4 text-3xl font-black tracking-tight text-[var(--ap-text)]">Support center</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 ap-muted">
+              Get help with uploads, billing, workspace access, and AI analysis quality.
+            </p>
+          </div>
+          <a href={mailHref} className="ap-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black">
+            Contact support
+            <ArrowRight className="h-4 w-4" />
+          </a>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {[
+          {
+            title: "Payment or plan issue",
+            body: "Share the Razorpay receipt email and the account email used in Adviso AI.",
+          },
+          {
+            title: "Upload or dataset issue",
+            body: "Send the file size, CSV columns, and the upload step where it failed.",
+          },
+          {
+            title: "AI output feedback",
+            body: "Use the feedback bubble for product feedback, or email a specific wrong insight.",
+          },
+        ].map((item) => (
+          <div key={item.title} className="ap-card rounded-2xl border p-5">
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-500/10 text-[#145DFF]">
+              <MessageSquare className="h-5 w-5" />
+            </div>
+            <h2 className="mt-4 text-base font-black text-[var(--ap-text)]">{item.title}</h2>
+            <p className="mt-2 text-sm leading-6 ap-muted">{item.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="ap-card rounded-2xl border p-5">
+        <div className="text-sm font-black text-[var(--ap-text)]">Before contacting support</div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {["Refresh once after login", "Check the active account email", "Keep payment receipt handy"].map((item) => (
+            <div key={item} className="flex items-center gap-2 text-sm font-bold">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FreePlanChoiceModal({
+  plans,
+  onContinueFree,
+  onUpgrade,
+  title,
+  description,
+  continueLabel,
+  footerNote,
+}: {
+  plans: PlanDefinition[];
+  onContinueFree: () => void;
+  onUpgrade: (planId: PlanId) => void;
+  title: string;
+  description: string;
+  continueLabel: string;
+  footerNote: string;
+}) {
+  const planDetails: Partial<Record<PlanId, { bestFor: string; features: string[] }>> = {
+    go: {
+      bestFor: "For Individuals & Small Businesses",
+      features: [
+        "Basic AI recommendations",
+        "Simple business insights",
+        "Monthly growth suggestions",
+        "Limited AI requests",
+        "Single-user access",
+      ],
+    },
+    pro: {
+      bestFor: "For Startups & Growing Businesses",
+      features: [
+        "Advanced AI business analysis",
+        "Smart forecasting",
+        "Competitor tracking",
+        "Profit optimization",
+        "Priority AI processing",
+      ],
+    },
+    enterprise: {
+      bestFor: "For Companies & Teams",
+      features: [
+        "Unlimited AI analysis",
+        "Advanced KPI intelligence",
+        "Team collaboration",
+        "Real-time forecasting",
+        "Enterprise security",
+      ],
+    },
+  };
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[110] overflow-y-auto p-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <motion.div
+        className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm"
+        onClick={onContinueFree}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      />
+      <motion.div
+        className="ap-modal relative mx-auto my-8 w-full max-w-7xl overflow-hidden rounded-3xl border p-5 shadow-2xl md:p-8"
+        initial={{ opacity: 0, y: 28, scale: 0.965, filter: "blur(10px)" }}
+        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+        exit={{ opacity: 0, y: 18, scale: 0.975, filter: "blur(8px)" }}
+        transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="absolute inset-0 subtle-grid opacity-10 pointer-events-none" />
+        <button className="absolute right-5 top-5 z-10 ap-btn rounded-lg p-2 shrink-0" onClick={onContinueFree} aria-label={continueLabel}>
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="relative z-10 mx-auto max-w-3xl text-center">
+          <div className="inline-flex rounded-full border px-3 py-1 text-xs font-mono font-bold uppercase tracking-widest ap-accent" style={{ background: "var(--ap-accent-soft)", borderColor: "var(--ap-border)" }}>
+            Adviso AI Pricing Plans
+          </div>
+          <h2 className="mt-4 text-3xl font-black tracking-tight text-[var(--ap-text)] sm:text-4xl">{title}</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 ap-muted">{description}</p>
+          <div className="mt-6 inline-flex items-center gap-1.5 rounded-xl border p-1 shadow-inner" style={{ background: "var(--ap-surface-2)", borderColor: "var(--ap-border)" }}>
+            <span className="rounded-lg px-4 py-2 text-xs font-bold ap-muted">Monthly Billing</span>
+            <span className="rounded-lg px-4 py-2 text-xs font-bold text-white" style={{ background: "var(--ap-accent)" }}>
+              Annual Billing <span className="ml-2 text-[10px] text-emerald-200">Save 20%</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="relative z-10 mx-auto mt-10 grid max-w-6xl grid-cols-1 gap-5 lg:grid-cols-3">
+          {plans.map((plan) => {
+            const checkoutPlan = checkoutPlanForId(plan.id);
+            const details = planDetails[plan.id];
+            const priceLabel = checkoutPlan?.price.replace(/^INR\s*/i, "Rs ") || plan.monthlyPriceLabel;
+            const isPopular = plan.id === "pro";
+            return (
+              <div
+                key={plan.id}
+                className={`ap-plan-panel relative flex min-h-[560px] flex-col justify-between rounded-2xl border p-6 text-left shadow-xl transition ${
+                  isPopular ? "ring-1 ring-blue-500/35 lg:scale-[1.04]" : ""
+                }`}
+                style={{ borderColor: isPopular ? "var(--ap-accent)" : "var(--ap-border)" }}
+              >
+                {isPopular && (
+                  <div className="absolute right-0 top-0 rounded-bl-xl rounded-tr-2xl px-4 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-white" style={{ background: "var(--ap-accent)" }}>
+                    Most Popular
+                  </div>
+                )}
+
+                <div className="space-y-6">
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="text-2xl font-black tracking-tight text-[var(--ap-text)]">{plan.badge}</span>
+                      {plan.id === "enterprise" && (
+                        <span className="rounded border px-1.5 text-[9px] font-mono uppercase tracking-widest ap-accent" style={{ background: "var(--ap-accent-soft)", borderColor: "var(--ap-border)" }}>
+                          Enterprise Matrix
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold tracking-wide ap-accent">{details?.bestFor}</p>
+                    <p className="mt-2 text-xs leading-relaxed ap-muted">{plan.description}</p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-4xl font-extrabold text-[var(--ap-text)]">{priceLabel}</span>
+                      <span className="text-xs font-mono ap-muted">/ mo</span>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase ap-muted">Billed annually after checkout</span>
+                  </div>
+
+                  <div className="space-y-1.5 rounded-xl border p-3" style={{ background: "var(--ap-surface-2)", borderColor: "var(--ap-border)" }}>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest ap-muted">Included interface tabs</span>
+                    <div className="flex flex-wrap gap-1">
+                      {plan.tabs.map((tab) => (
+                        <span key={tab} className="rounded border px-2 py-0.5 text-[10px] font-mono text-[var(--ap-text)]" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-3)" }}>
+                          {tab}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 border-t pt-5" style={{ borderColor: "var(--ap-border)" }}>
+                    <span className="block text-[9px] font-mono uppercase tracking-widest ap-muted">Core specified capabilities</span>
+                    {(details?.features || []).map((feature) => (
+                      <div key={feature} className="flex items-start gap-2.5 text-xs">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 ap-accent" />
+                        <span className="leading-normal text-[var(--ap-text)]">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  className={`mt-8 flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-xs font-bold transition ${
+                    isPopular ? "ap-btn-primary" : "ap-btn"
+                  }`}
+                  onClick={() => onUpgrade(plan.id)}
+                >
+                  Upgrade to {plan.badge}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="relative z-10 mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: "var(--ap-border)" }}>
+          <p className="text-xs leading-5 ap-muted">{footerNote}</p>
+          <button className="ap-btn rounded-xl px-4 py-3 text-xs font-black transition" onClick={onContinueFree}>
+            {continueLabel}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -1563,6 +3031,7 @@ function OverviewTab({
   const allProfiles = useMemo(() => profileColumns(data, allColumns), [data, allColumns]);
   const toggleColumn = (column: string) => {
     const next = columns.includes(column) ? columns.filter((item) => item !== column) : [...columns, column];
+    if (!next.length) return;
     onColumnsChange(next);
   };
 
@@ -1699,6 +3168,451 @@ function OverviewTab({
   );
 }
 
+type WorkspaceFieldFilter = "all" | "numeric" | "text" | "issues";
+
+function schemaTypeLabel(profile: ColumnProfile) {
+  if (profile.type === "number") return "DECIMAL";
+  const lower = profile.name.toLowerCase();
+  if (lower.includes("date") || lower.includes("time")) return "DATE";
+  if (lower.includes("id")) return "ID";
+  return "VARCHAR";
+}
+
+function dataQualityScore(profiles: ColumnProfile[], rowCount: number) {
+  if (!profiles.length || !rowCount) return 100;
+  const totalCells = profiles.length * rowCount;
+  const missingCells = profiles.reduce((sum, profile) => sum + profile.missing, 0);
+  const highRiskColumns = profiles.filter((profile) => profile.missingPercent >= 25 || profile.unique <= 1).length;
+  const missingPenalty = (missingCells / totalCells) * 100;
+  const riskPenalty = Math.min(18, highRiskColumns * 2);
+  return Math.max(0, Math.min(100, Math.round(100 - missingPenalty - riskPenalty)));
+}
+
+function compactInsightText(insight?: InsightResult) {
+  if (!insight?.answer) return "";
+  return insight.answer
+    .replace(/\s+/g, " ")
+    .replace(/[#*_`>-]/g, "")
+    .trim()
+    .slice(0, 230);
+}
+
+function DataPreviewTab({
+  profiles,
+  data,
+  allColumns,
+  columns,
+  ignoredColumns,
+  fileName,
+  missingCount,
+  numericCount,
+  categoryCount,
+  insight,
+  loading,
+  onRefresh,
+  onGenerateReport,
+  onOpenTab,
+  onColumnsChange,
+  onFile,
+  backendUploadBusy,
+  backendUploadProgress,
+  backendUploadMessage,
+  activeBackendDatasetId,
+}: {
+  profiles: ColumnProfile[];
+  data: Record<string, unknown>[];
+  allColumns: string[];
+  columns: string[];
+  ignoredColumns: string[];
+  fileName: string;
+  missingCount: number;
+  numericCount: number;
+  categoryCount: number;
+  insight?: InsightResult;
+  loading: boolean;
+  onRefresh: () => void;
+  onGenerateReport: () => void;
+  onOpenTab: (tab: TabType) => void;
+  onColumnsChange: (columns: string[]) => void;
+  onFile: (file: File) => void;
+  backendUploadBusy: boolean;
+  backendUploadProgress: number | null;
+  backendUploadMessage: string;
+  activeBackendDatasetId: number | null;
+}) {
+  const [fieldFilter, setFieldFilter] = useState<WorkspaceFieldFilter>("all");
+  const [showAllSchema, setShowAllSchema] = useState(false);
+  const [expandedPreview, setExpandedPreview] = useState(false);
+  const allProfiles = useMemo(() => profileColumns(data, allColumns), [data, allColumns]);
+  const activeProfileSet = useMemo(() => new Set(profiles.map((profile) => profile.name)), [profiles]);
+  const issueProfiles = useMemo(
+    () => allProfiles.filter((profile) => profile.missingPercent >= 15 || profile.unique <= 1),
+    [allProfiles],
+  );
+  const qualityScore = dataQualityScore(allProfiles, data.length);
+  const warningCount = allProfiles.filter((profile) => profile.missing > 0 && profile.missingPercent < 15).length;
+  const insightCopy = compactInsightText(insight);
+  const previewColumns = columns.slice(0, expandedPreview ? 12 : 8);
+  const previewRows = data.slice(0, expandedPreview ? 14 : 6);
+  const schemaProfiles = showAllSchema ? allProfiles : allProfiles.slice(0, 6);
+  const visibleFields = allProfiles.filter((profile) => {
+    if (fieldFilter === "numeric") return profile.type === "number";
+    if (fieldFilter === "text") return profile.type !== "number";
+    if (fieldFilter === "issues") return profile.missingPercent >= 15 || profile.unique <= 1;
+    return true;
+  });
+  const dateLabel = new Intl.DateTimeFormat("en-IN", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
+
+  const toggleColumn = (column: string) => {
+    const next = columns.includes(column)
+      ? columns.filter((item) => item !== column)
+      : [...columns, column];
+    if (!next.length) return;
+    onColumnsChange(next);
+  };
+  const activateProfileOnly = (column: string) => {
+    const ordered = [column, ...columns.filter((item) => item !== column)];
+    onColumnsChange(ordered);
+  };
+  const filterButtons: Array<{ id: WorkspaceFieldFilter; label: string }> = [
+    { id: "all", label: "All fields" },
+    { id: "numeric", label: "Numeric" },
+    { id: "text", label: "Text" },
+    { id: "issues", label: "Issues" },
+  ];
+  const kpis = [
+    {
+      label: "Total records",
+      value: formatNumber(data.length, 0),
+      delta: `${formatNumber(previewRows.length, 0)} row preview loaded`,
+      icon: Table,
+      tone: "var(--ap-accent)",
+    },
+    {
+      label: "Active fields",
+      value: formatNumber(columns.length, 0),
+      delta: `${formatNumber(allColumns.length, 0)} detected columns`,
+      icon: FileSpreadsheet,
+      tone: "var(--ap-accent)",
+    },
+    {
+      label: "Columns analyzed",
+      value: formatNumber(profiles.length, 0),
+      delta: `${formatNumber(ignoredColumns.length, 0)} excluded from AI context`,
+      icon: Database,
+      tone: "var(--ap-accent)",
+    },
+    {
+      label: "Data quality score",
+      value: `${qualityScore}%`,
+      delta: qualityScore >= 90 ? "Ready for analysis" : "Review warnings",
+      icon: Shield,
+      tone: qualityScore >= 90 ? "var(--ap-good)" : "var(--ap-warn)",
+    },
+    {
+      label: "Workspace pipeline",
+      value: backendUploadBusy
+        ? `${formatNumber(backendUploadProgress ?? 0, 0)}%`
+        : activeBackendDatasetId
+          ? "Indexed"
+          : "Local",
+      delta: backendUploadMessage || (activeBackendDatasetId ? "Backend dataset connected" : "Upload pipeline pending"),
+      icon: BrainCircuit,
+      tone: backendUploadBusy ? "var(--ap-warn)" : "var(--ap-good)",
+    },
+    {
+      label: "Issues detected",
+      value: formatNumber(issueProfiles.length, 0),
+      delta: issueProfiles.length ? "Needs review" : "No major schema issues",
+      icon: Compass,
+      tone: issueProfiles.length ? "var(--ap-warn)" : "var(--ap-good)",
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+      <div className="space-y-4 min-w-0">
+        <section className="ap-card border rounded-2xl p-5 lg:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-[var(--ap-text)]">Data workspace command center</h2>
+              <p className="ap-muted mt-1 max-w-3xl text-sm leading-6">
+                {fileName || "Uploaded dataset"} is ready for preview, schema review, and AI-backed insight generation.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="ap-panel rounded-xl border px-3 py-2 text-xs font-bold ap-muted">{dateLabel}</div>
+              <label className="ap-btn cursor-pointer rounded-xl px-4 py-2.5 text-xs font-black inline-flex items-center justify-center gap-2 transition">
+                <UploadCloud className="w-4 h-4" />
+                Load new CSV
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  disabled={backendUploadBusy}
+                  onChange={(event) => event.target.files?.[0] && onFile(event.target.files[0])}
+                />
+              </label>
+              <button onClick={onRefresh} disabled={loading} className="ap-btn-primary rounded-xl px-4 py-2.5 text-xs font-black inline-flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                {loading ? "Generating..." : "Generate insights"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            {kpis.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="ap-panel rounded-xl border p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] ap-muted">{item.label}</div>
+                      <div className="mt-2 truncate text-2xl font-black text-[var(--ap-text)]" title={item.value}>{item.value}</div>
+                    </div>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--ap-accent-soft)", color: item.tone }}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3 line-clamp-2 text-[11px] font-semibold ap-muted">{item.delta}</div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="ap-card border rounded-2xl p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h3 className="text-lg font-black text-[var(--ap-text)]">Data workspace</h3>
+              <p className="ap-muted text-sm">Click a field to include or remove it from active analysis context.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {filterButtons.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setFieldFilter(item.id)}
+                  className={`rounded-xl px-3 py-2 text-xs font-black transition ${fieldFilter === item.id ? "ap-btn-primary" : "ap-btn"}`}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <button className="ap-btn text-xs font-black px-3 py-2 rounded-xl" onClick={() => onColumnsChange(defaultAnalysisColumns(data, allColumns))}>
+                Exclude ID columns
+              </button>
+              <button className="ap-btn text-xs font-black px-3 py-2 rounded-xl" onClick={() => onColumnsChange(allColumns)}>
+                Select all
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {visibleFields.slice(0, 16).map((profile) => {
+              const active = columns.includes(profile.name);
+              const idLike = isIdLikeColumn(profile.name, profile, data.length);
+              return (
+                <button
+                  key={profile.name}
+                  onClick={() => toggleColumn(profile.name)}
+                  onDoubleClick={() => activateProfileOnly(profile.name)}
+                  className="ap-panel group min-w-0 rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+                  style={{ borderColor: active ? "var(--ap-accent)" : "var(--ap-border)", opacity: active ? 1 : 0.58 }}
+                  title="Click to toggle this field. Double click to prioritize it."
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-black text-[var(--ap-text)]" title={profile.name}>{profile.name}</div>
+                      <div className="mt-1 text-[11px] font-semibold ap-muted">
+                        {formatNumber(data.length - profile.missing, 0)} populated rows
+                      </div>
+                    </div>
+                    <span className="rounded-md px-2 py-1 text-[10px] font-black uppercase" style={{ background: profile.type === "number" ? "var(--ap-accent-soft)" : "var(--ap-surface-3)", color: profile.type === "number" ? "var(--ap-accent)" : "var(--ap-muted)" }}>
+                      {schemaTypeLabel(profile)}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
+                    <div>
+                      <div className="ap-muted">Unique</div>
+                      <div className="font-black text-[var(--ap-text)]">{formatNumber(profile.unique, 0)}</div>
+                    </div>
+                    <div>
+                      <div className="ap-muted">Missing</div>
+                      <div className="font-black text-[var(--ap-text)]">{formatNumber(profile.missingPercent, 1)}%</div>
+                    </div>
+                    <div>
+                      <div className="ap-muted">Status</div>
+                      <div className="font-black" style={{ color: active ? "var(--ap-good)" : "var(--ap-muted)" }}>{active ? "Active" : "Paused"}</div>
+                    </div>
+                  </div>
+                  {idLike && <div className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] ap-muted">ID-like field</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {visibleFields.length > 16 && (
+            <div className="mt-4 text-xs font-semibold ap-muted">Showing 16 of {formatNumber(visibleFields.length, 0)} fields. Use filters or open the full preview to inspect more.</div>
+          )}
+          {ignoredColumns.length > 0 && (
+            <div className="mt-4 rounded-xl border px-4 py-3 text-xs ap-muted" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+              Excluded from AI context: {ignoredColumns.slice(0, 8).join(", ")}
+              {ignoredColumns.length > 8 ? ` and ${ignoredColumns.length - 8} more` : ""}
+            </div>
+          )}
+        </section>
+
+        <section className="ap-card border rounded-2xl p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-black text-[var(--ap-text)]">Data preview</h3>
+              <p className="ap-muted text-sm">Preview and validate records before moving into analytics, reports, or chat.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button className="ap-btn rounded-xl px-3 py-2 text-xs font-black" onClick={() => setExpandedPreview((value) => !value)}>
+                {expandedPreview ? "Compact preview" : "View full data"}
+                <ArrowRight className="ml-1 inline h-3.5 w-3.5" />
+              </button>
+              <button className="ap-btn rounded-xl px-3 py-2 text-xs font-black" onClick={() => onOpenTab("Charts")}>
+                Open charts
+              </button>
+            </div>
+          </div>
+          <div className="mt-5 ap-table-wrap rounded-xl border overflow-auto max-h-[520px]">
+            <table className="ap-table w-full min-w-[980px] text-left text-xs">
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 w-14">#</th>
+                  {previewColumns.map((column) => (
+                    <th key={column} className="px-4 py-3 whitespace-nowrap uppercase tracking-[0.12em]">
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, rowIndex) => (
+                  <tr key={rowIndex} className="border-t">
+                    <td className="px-4 py-3 ap-muted">{rowIndex + 1}</td>
+                    {previewColumns.map((column) => (
+                      <td key={column} className="max-w-[260px] truncate px-4 py-3" title={String(row[column] ?? "")}>
+                        {String(row[column] ?? "") || <span className="ap-muted">empty</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <aside className="space-y-4 min-w-0">
+        <section className="ap-card border rounded-2xl p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black text-[var(--ap-text)]">Schema profile</h3>
+              <p className="mt-1 text-xs ap-muted">Detected field types and fill rates.</p>
+            </div>
+            <button className="text-xs font-black ap-accent" onClick={() => setShowAllSchema((value) => !value)}>
+              {showAllSchema ? "Collapse" : "View all"}
+            </button>
+          </div>
+          <div className="space-y-4">
+            {schemaProfiles.map((profile) => {
+              const completeness = Math.max(0, Math.min(100, 100 - profile.missingPercent));
+              return (
+                <button key={profile.name} onClick={() => toggleColumn(profile.name)} className="w-full text-left">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-black text-[var(--ap-text)]" title={profile.name}>{profile.name}</div>
+                      <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] ap-muted">{schemaTypeLabel(profile)}</div>
+                    </div>
+                    <div className="text-xs font-black ap-muted">{formatNumber(completeness, 0)}%</div>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: "var(--ap-surface-3)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${completeness}%`, background: activeProfileSet.has(profile.name) ? "var(--ap-accent)" : "var(--ap-muted)" }} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {allProfiles.length > schemaProfiles.length && (
+            <div className="mt-4 text-xs font-semibold ap-muted">+ {formatNumber(allProfiles.length - schemaProfiles.length, 0)} more fields</div>
+          )}
+        </section>
+
+        <section className="ap-card border rounded-2xl p-5">
+          <h3 className="font-black text-[var(--ap-text)]">Data quality summary</h3>
+          <div className="mt-5 flex items-center gap-5">
+            <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(var(--ap-good) ${qualityScore * 3.6}deg, var(--ap-surface-3) 0deg)` }}>
+              <div className="absolute h-16 w-16 rounded-full" style={{ background: "var(--ap-card)" }} />
+              <div className="relative text-center">
+                <div className="text-xl font-black text-[var(--ap-text)]">{qualityScore}%</div>
+                <div className="text-[9px] font-bold ap-muted">overall</div>
+              </div>
+            </div>
+            <div className="min-w-0 flex-1 space-y-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="ap-muted">Valid fields</span>
+                <span className="font-black text-[var(--ap-text)]">{formatNumber(allProfiles.length - issueProfiles.length, 0)}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="ap-muted">Warnings</span>
+                <span className="font-black text-[var(--ap-text)]">{formatNumber(warningCount, 0)}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="ap-muted">Issues</span>
+                <span className="font-black" style={{ color: issueProfiles.length ? "var(--ap-warn)" : "var(--ap-good)" }}>{formatNumber(issueProfiles.length, 0)}</span>
+              </div>
+            </div>
+          </div>
+          <button onClick={onRefresh} className="mt-5 ap-btn w-full rounded-xl px-4 py-2.5 text-xs font-black">Run quality-aware insight</button>
+        </section>
+
+        <section className="ap-card border rounded-2xl p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-black text-[var(--ap-text)]">AI insights</h3>
+            <button className="text-xs font-black ap-accent" onClick={() => onOpenTab("AI")}>View all</button>
+          </div>
+          <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--ap-accent-soft)", color: "var(--ap-accent)" }}>
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-black text-[var(--ap-text)]">
+                  {loading ? "Generating workspace insight..." : insightCopy ? "Workspace insight ready" : "Generate your first insight"}
+                </h4>
+                <p className="mt-2 text-xs leading-5 ap-muted">
+                  {loading
+                    ? "The backend is profiling the selected fields and preparing a concise business summary."
+                    : insightCopy || "Use the dataset metadata, sampled rows, and schema profile to produce a backend-backed summary."}
+                </p>
+                {insight?.source && <InsightSourceBadge source={insight.source} />}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            <button onClick={onRefresh} disabled={loading} className="ap-btn-primary w-full rounded-xl px-4 py-3 text-xs font-black">
+              {loading ? "Generating..." : "Generate insights"}
+            </button>
+            <button onClick={onGenerateReport} className="ap-btn w-full rounded-xl px-4 py-3 text-xs font-black">
+              Generate decision brief
+            </button>
+            <button onClick={() => onOpenTab("Chat")} className="ap-btn w-full rounded-xl px-4 py-3 text-xs font-black">
+              Ask AI Assistant
+            </button>
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
 function ChartsTab({
   theme,
   chartType,
@@ -1743,6 +3657,13 @@ function ChartsTab({
   demandRecommendations: DemandRecommendation[];
 }) {
   const [selectedValue, setSelectedValue] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState("Pricing Optimization");
+  const [scenarioField, setScenarioField] = useState(yAxisCol);
+  const [scenarioDirection, setScenarioDirection] = useState("+");
+  const [scenarioDelta, setScenarioDelta] = useState(10);
+  const [analysisName, setAnalysisName] = useState("Pricing Optimization Analysis");
+  const [saveNotice, setSaveNotice] = useState("");
+  const [isRunningAnalysis, setIsRunningAnalysis] = useState(false);
   const gridColor = "var(--ap-chart-grid)";
   const axis = axisColor(theme);
   const tooltip = chartTooltip(theme);
@@ -1755,6 +3676,17 @@ function ChartsTab({
     { label: "Relationship", chart: "Scatter" as ChartType, reason: "Use when both selected fields are numeric." },
     { label: "Contribution share", chart: "Donut" as ChartType, reason: "Good for top segment share, not full-detail analysis." },
   ];
+
+  useEffect(() => {
+    if (!scenarioField && yAxisCol) setScenarioField(yAxisCol);
+  }, [scenarioField, yAxisCol]);
+
+  useEffect(() => {
+    if (!isRunningAnalysis) return;
+    const timer = window.setTimeout(() => setIsRunningAnalysis(false), 560);
+    return () => window.clearTimeout(timer);
+  }, [isRunningAnalysis]);
+
   const handleDrill = (value: unknown) => {
     if (value === null || value === undefined || value === "") return;
     setSelectedValue(String(value).slice(0, 80));
@@ -1765,6 +3697,447 @@ function ChartsTab({
   const scopedDemandRecommendations = useMemo(
     () => buildDemandRecommendations(drillRows.length ? drillRows : data, columns),
     [drillRows, data, columns],
+  );
+
+  const revenueColumn = findColumn(numericColumns, [/revenue/, /sales/, /amount/, /total/, /price/, /value/]) || yAxisCol || numericColumns[0] || "";
+  const priceColumn = findColumn(numericColumns, [/price/, /amount/, /cost/]) || revenueColumn;
+  const discountColumn = findColumn(numericColumns, [/discount/, /margin/, /pct/, /percent/]) || secondaryCol || numericColumns[1] || revenueColumn;
+  const ratingColumn = findColumn(numericColumns, [/rating/, /score/, /stars/]) || numericColumns.find((column) => column !== revenueColumn && column !== discountColumn) || revenueColumn;
+  const segmentColumn = findColumn(categoryColumns, [/category/, /segment/, /region/, /product/, /type/]) || xAxisCol || categoryColumns[0] || columns[0] || "";
+  const strongestCorrelation = correlationData
+    .filter((item) => item.x !== item.y)
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))[0];
+  const mainTotal = sumColumn(data, revenueColumn);
+  const projectedMultiplier = (scenarioDirection === "+" ? 1 : -1) * (Number(scenarioDelta) || 0);
+  const projectedImpact = mainTotal * (projectedMultiplier / 100) * 0.18;
+  const topSegments = categoryAggregate.slice(0, 3);
+  const distributionBars = histogramRows.slice(0, 8);
+  const recentAnalyses = [
+    { label: selectedTemplate, time: "Just now", icon: Target },
+    { label: "Revenue Drivers", time: "1 hour ago", icon: TrendingUp },
+    { label: "Product Performance", time: "Recent", icon: ChartDonut },
+    { label: "Customer Segmentation", time: "Recent", icon: BrainCircuit },
+  ];
+  const analysisTemplates = [
+    {
+      label: "Revenue Analysis",
+      description: "Understand revenue drivers and trends",
+      icon: DollarSign,
+      chart: "Horizontal Bar" as ChartType,
+      dimension: segmentColumn,
+      measure: revenueColumn,
+      secondary: discountColumn,
+    },
+    {
+      label: "Pricing Optimization",
+      description: "Find optimal pricing and discount strategy",
+      icon: Target,
+      chart: "Scatter" as ChartType,
+      dimension: discountColumn || priceColumn,
+      measure: ratingColumn || revenueColumn,
+      secondary: revenueColumn,
+    },
+    {
+      label: "Product Performance",
+      description: "Identify top and underperforming products",
+      icon: ChartDonut,
+      chart: "Bar" as ChartType,
+      dimension: segmentColumn,
+      measure: revenueColumn,
+      secondary: ratingColumn,
+    },
+    {
+      label: "Customer Segmentation",
+      description: "Segment behavior and value",
+      icon: BrainCircuit,
+      chart: "Donut" as ChartType,
+      dimension: segmentColumn,
+      measure: revenueColumn,
+      secondary: ratingColumn,
+    },
+    {
+      label: "Market Basket Analysis",
+      description: "Discover product relationships",
+      icon: Database,
+      chart: "Treemap" as ChartType,
+      dimension: segmentColumn,
+      measure: revenueColumn,
+      secondary: priceColumn,
+    },
+    {
+      label: "Custom Analysis",
+      description: "Build your own analysis",
+      icon: Sparkles,
+      chart: "Composed" as ChartType,
+      dimension: xAxisCol,
+      measure: yAxisCol,
+      secondary: secondaryCol,
+    },
+  ];
+  const applyTemplate = (template: (typeof analysisTemplates)[number]) => {
+    setSelectedTemplate(template.label);
+    setAnalysisName(`${template.label} Analysis`);
+    setChartType(template.chart);
+    if (template.dimension) setXAxisCol(template.dimension);
+    if (template.measure) setYAxisCol(template.measure);
+    if (template.secondary) setSecondaryCol(template.secondary);
+    setScenarioField(template.secondary || template.measure || scenarioField);
+    setSelectedValue(null);
+    setIsRunningAnalysis(true);
+  };
+  const runAnalysis = () => {
+    setIsRunningAnalysis(true);
+    setSaveNotice("");
+  };
+  const saveAnalysis = () => {
+    setSaveNotice(`${analysisName || selectedTemplate} saved to your workspace.`);
+    window.setTimeout(() => setSaveNotice(""), 2600);
+  };
+  const variableChips = Array.from(new Set([discountColumn, priceColumn, ratingColumn, revenueColumn].filter(Boolean))).slice(0, 5);
+  const findings = [
+    {
+      title: "Key driver identified",
+      body: strongestCorrelation
+        ? `${strongestCorrelation.x} and ${strongestCorrelation.y} show the strongest relationship in this dataset.`
+        : `${revenueColumn || yAxisCol} is the primary metric for this analysis.`,
+      badge: strongestCorrelation ? `${formatNumber(strongestCorrelation.value, 2)} correlation` : "Primary metric",
+    },
+    {
+      title: "Pricing opportunity",
+      body: demandRecommendations.length
+        ? `${demandRecommendations.length} product-level opportunities are ready for review.`
+        : `Compare ${discountColumn || "discount"} against ${ratingColumn || "rating"} before adjusting prices.`,
+      badge: "Review",
+    },
+    {
+      title: "Optimal range",
+      body: distributionBars.length
+        ? `The selected measure has ${distributionBars.length} visible distribution bands.`
+        : "Run a distribution analysis to identify the stable operating range.",
+      badge: "Evidence",
+    },
+    {
+      title: "Risk detected",
+      body: hypothesis ? hypothesis.verdict : "Segment differences need validation before operational decisions.",
+      badge: "Check",
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#145DFF]" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface)" }}>
+            <BarChart2 className="h-3.5 w-3.5" />
+            Analysis Lab
+          </div>
+          <h1 className="mt-3 text-3xl font-black tracking-tight text-[var(--ap-text)]">Visual Analytics</h1>
+          <p className="mt-1 max-w-2xl text-sm ap-muted">Run focused analyses, discover signals, and turn charts into decisions.</p>
+          <p className="mt-2 text-xs font-semibold ap-muted">
+            Active dataset | {formatNumber(data.length, 0)} rows | {formatNumber(columns.length, 0)} active columns
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button onClick={() => setSaveNotice("Saved analyses panel is ready for workspace history integration.")} className="ap-btn rounded-xl px-4 py-2.5 text-xs font-black inline-flex items-center gap-2">
+            Saved Analyses
+          </button>
+          <button onClick={saveAnalysis} className="ap-btn-primary rounded-xl px-4 py-2.5 text-xs font-black inline-flex items-center gap-2">
+            <Download className="h-4 w-4" />
+            Save View
+          </button>
+        </div>
+      </div>
+
+      {saveNotice && (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs font-bold text-emerald-700">
+          {saveNotice}
+        </div>
+      )}
+
+      <section className="ap-card border rounded-2xl p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-black text-[var(--ap-text)]">Analysis Templates</h2>
+            <p className="mt-1 text-xs ap-muted">Start with a pre-built analysis template or create your own.</p>
+          </div>
+          <span className="hidden text-xs font-black text-[#145DFF] md:inline-flex items-center gap-1">
+            View all templates
+            <ArrowRight className="h-3.5 w-3.5" />
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+          {analysisTemplates.map((template) => {
+            const Icon = template.icon;
+            const active = selectedTemplate === template.label;
+            return (
+              <button
+                key={template.label}
+                onClick={() => applyTemplate(template)}
+                className="rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+                style={{ borderColor: active ? "var(--ap-accent)" : "var(--ap-border)", background: active ? "var(--ap-accent-soft)" : "var(--ap-surface)" }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: active ? "var(--ap-surface)" : "var(--ap-surface-2)", color: "var(--ap-accent)" }}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-black text-[var(--ap-text)]">{template.label}</div>
+                    <p className="mt-1 text-xs leading-5 ap-muted">{template.description}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[330px_minmax(0,1fr)_320px]">
+        <aside className="space-y-5">
+          <section className="ap-card border rounded-2xl p-5">
+            <h2 className="text-sm font-black text-[var(--ap-text)]">1. Build Your Analysis</h2>
+            <div className="mt-4 space-y-4">
+              <Select label="Analysis goal" value={selectedTemplate} onChange={(value) => {
+                const template = analysisTemplates.find((item) => item.label === value);
+                if (template) applyTemplate(template);
+              }} options={analysisTemplates.map((item) => item.label)} />
+              <div>
+                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] ap-muted">Independent variables</div>
+                <div className="flex flex-wrap gap-2">
+                  {variableChips.map((column) => (
+                    <button key={column} onClick={() => setXAxisCol(column)} className="rounded-lg border px-2.5 py-1.5 text-xs font-bold" style={{ borderColor: "var(--ap-border)", background: xAxisCol === column ? "var(--ap-accent-soft)" : "var(--ap-surface-2)", color: xAxisCol === column ? "var(--ap-accent)" : "var(--ap-text)" }}>
+                      {column}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Select label="Dimension" value={xAxisCol} onChange={setXAxisCol} options={categoryColumns.length ? categoryColumns : columns} />
+              <Select label="Target variable" value={yAxisCol} onChange={setYAxisCol} options={numericColumns.length ? numericColumns : columns} />
+              <Select label="Comparison variable" value={secondaryCol} onChange={setSecondaryCol} options={numericColumns.length ? numericColumns : columns} />
+              <Select label="Chart style" value={chartType} onChange={(value) => setChartType(value as ChartType)} options={CHARTS} />
+              <button onClick={runAnalysis} disabled={isRunningAnalysis} className="ap-btn-primary mt-2 w-full rounded-xl px-4 py-3 text-xs font-black inline-flex items-center justify-center gap-2 disabled:opacity-70">
+                {isRunningAnalysis ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" /> : <Sparkles className="h-4 w-4" />}
+                {isRunningAnalysis ? "Running analysis..." : "Run Analysis"}
+              </button>
+            </div>
+          </section>
+
+          <section className="ap-card border rounded-2xl p-5">
+            <h2 className="text-sm font-black text-[var(--ap-text)]">Segment Explorer</h2>
+            <p className="mt-1 text-xs ap-muted">Top segments discovered from the selected dimension.</p>
+            <div className="mt-4 space-y-3">
+              {topSegments.map((segment, index) => (
+                <button
+                  key={segment.name}
+                  onClick={() => handleDrill(segment.name)}
+                  className="w-full rounded-xl border p-3 text-left transition hover:border-[#145DFF]/50"
+                  style={{ borderColor: selectedValue === segment.name ? "var(--ap-accent)" : "var(--ap-border)", background: "var(--ap-surface-2)" }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-black text-[var(--ap-text)]">{segment.name}</span>
+                    <span className="text-xs font-black ap-muted">#{index + 1}</span>
+                  </div>
+                  <div className="mt-2 text-xs ap-muted">Value: {formatNumber(segment.value, 0)}</div>
+                </button>
+              ))}
+            </div>
+          </section>
+        </aside>
+
+        <main className="space-y-5 min-w-0">
+          <section className="ap-card border rounded-2xl p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-black text-[var(--ap-text)]">2. AI Generated Findings</h2>
+                <p className="mt-1 text-xs ap-muted">Lightweight findings from the active dataset profile.</p>
+              </div>
+              {isRunningAnalysis && <span className="text-xs font-black text-[#145DFF]">Updating...</span>}
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {findings.map((finding, index) => (
+                <div key={finding.title} className="rounded-2xl border p-4" style={{ borderColor: "var(--ap-border)", background: index === 0 ? "var(--ap-accent-soft)" : "var(--ap-surface-2)" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: "var(--ap-surface)", color: "var(--ap-accent)" }}>
+                      {index === 0 ? <TrendingUp className="h-4 w-4" /> : index === 1 ? <Target className="h-4 w-4" /> : index === 2 ? <BarChart2 className="h-4 w-4" /> : <Compass className="h-4 w-4" />}
+                    </div>
+                    <span className="rounded-full border px-2 py-1 text-[10px] font-black ap-muted" style={{ borderColor: "var(--ap-border)" }}>{finding.badge}</span>
+                  </div>
+                  <h3 className="mt-3 text-sm font-black text-[var(--ap-text)]">{finding.title}</h3>
+                  <p className="mt-2 min-h-[58px] text-xs leading-5 ap-muted">{finding.body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="ap-card border rounded-2xl p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-black text-[var(--ap-text)]">3. Visual Evidence</h2>
+                <p className="mt-1 text-xs ap-muted">Charts are intentionally restrained for practical analysis.</p>
+              </div>
+              <button onClick={() => setChartType("Composed")} className="text-xs font-black text-[#145DFF] inline-flex items-center gap-1">
+                View all charts
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div className="rounded-2xl border p-4" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+                <h3 className="text-xs font-black text-[var(--ap-text)]">{yAxisCol} by {xAxisCol}</h3>
+                <div className="mt-3 h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryAggregate.slice(0, 10)} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                      <XAxis type="number" stroke={axis} tick={{ fontSize: 10 }} />
+                      <YAxis type="category" dataKey="name" stroke={axis} tick={{ fontSize: 10 }} width={110} />
+                      <Tooltip contentStyle={tooltip} />
+                      <Bar dataKey="value" fill={CHART_COLOR} radius={[0, 4, 4, 0]} onClick={(payload: any) => handleDrill(payload?.name || payload?.payload?.name)} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded-2xl border p-4" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+                <h3 className="text-xs font-black text-[var(--ap-text)]">{yAxisCol} distribution</h3>
+                <div className="mt-3 h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={histogramRows}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                      <XAxis dataKey="bucket" stroke={axis} tick={{ fontSize: 10 }} minTickGap={18} />
+                      <YAxis stroke={axis} tick={{ fontSize: 10 }} />
+                      <Tooltip contentStyle={tooltip} />
+                      <Bar dataKey="count" fill={CHART_COLOR_2} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded-2xl border p-4" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+                <h3 className="text-xs font-black text-[var(--ap-text)]">{yAxisCol} vs {secondaryCol}</h3>
+                <div className="mt-3 h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                      <XAxis dataKey="__secondary" name={secondaryCol} stroke={axis} tick={{ fontSize: 10 }} />
+                      <YAxis dataKey="__y" name={yAxisCol} stroke={axis} tick={{ fontSize: 10 }} />
+                      <Tooltip contentStyle={tooltip} cursor={{ strokeDasharray: "3 3" }} />
+                      <Scatter data={chartRows} fill={CHART_COLOR} />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <section className="ap-card border rounded-2xl p-5">
+              <h2 className="text-sm font-black text-[var(--ap-text)]">5. Recommendations & Actions</h2>
+              <div className="mt-4 space-y-3">
+                {(scopedDemandRecommendations.length ? scopedDemandRecommendations : demandRecommendations).slice(0, 3).map((item, index) => (
+                  <div key={`${item.title}-${index}`} className="rounded-xl border p-3" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-[var(--ap-text)]">{item.title}</div>
+                        <div className="mt-1 text-xs ap-muted">{item.description}</div>
+                      </div>
+                      <button onClick={() => setSaveNotice(`Action plan created from ${item.title}.`)} className="ap-btn rounded-lg px-3 py-2 text-xs font-black">Create Plan</button>
+                    </div>
+                  </div>
+                ))}
+                {!demandRecommendations.length && (
+                  <p className="text-sm ap-muted">Add product, rating, review count, and price-like fields to generate product-level recommendations.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="ap-card border rounded-2xl p-5">
+              <h2 className="text-sm font-black text-[var(--ap-text)]">Recent Analyses</h2>
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                {recentAnalyses.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button key={item.label} onClick={() => setSelectedTemplate(item.label)} className="rounded-xl border p-3 text-left transition hover:border-[#145DFF]/50" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+                      <div className="flex items-center gap-3">
+                        <div className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: "var(--ap-accent-soft)", color: "var(--ap-accent)" }}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-black text-[var(--ap-text)]">{item.label}</div>
+                          <div className="text-xs ap-muted">{item.time}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        </main>
+
+        <aside className="space-y-5">
+          <section className="ap-card border rounded-2xl p-5">
+            <h2 className="text-sm font-black text-[var(--ap-text)]">4. Scenario Simulator</h2>
+            <p className="mt-1 text-xs ap-muted">Test a simple sensitivity scenario.</p>
+            <div className="mt-4 space-y-4">
+              <Select label="What do you want to change?" value={scenarioField || yAxisCol} onChange={setScenarioField} options={numericColumns.length ? numericColumns : columns} />
+              <div className="grid grid-cols-[70px_1fr_56px] gap-2">
+                <select className="ap-input border rounded-lg px-3 py-2 text-sm" value={scenarioDirection} onChange={(event) => setScenarioDirection(event.target.value)} style={{ borderColor: "var(--ap-border)" }}>
+                  <option value="+">+</option>
+                  <option value="-">-</option>
+                </select>
+                <input className="ap-input border rounded-lg px-3 py-2 text-sm" type="number" min={0} max={100} value={scenarioDelta} onChange={(event) => setScenarioDelta(Number(event.target.value))} style={{ borderColor: "var(--ap-border)" }} />
+                <div className="ap-panel border rounded-lg px-3 py-2 text-center text-sm font-black">%</div>
+              </div>
+              <button onClick={runAnalysis} className="ap-btn w-full rounded-xl px-4 py-3 text-xs font-black">Run Simulation</button>
+            </div>
+            <div className="mt-5 rounded-xl border p-4" style={{ borderColor: "var(--ap-border)", background: "var(--ap-surface-2)" }}>
+              <h3 className="text-xs font-black text-[var(--ap-text)]">Projected Impact</h3>
+              <div className="mt-4 space-y-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="ap-muted">Revenue</span>
+                  <span className="font-black" style={{ color: projectedImpact >= 0 ? "var(--ap-good)" : "var(--ap-warn)" }}>
+                    {projectedImpact >= 0 ? "+" : ""}{formatNumber(projectedImpact, 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="ap-muted">Confidence</span>
+                  <span className="font-black text-[var(--ap-text)]">{correlationData.length ? "87%" : "72%"}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="ap-muted">Affected rows</span>
+                  <span className="font-black text-[var(--ap-text)]">{formatNumber(selectedValue ? drillRows.length : Math.min(data.length, 500), 0)}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="ap-card border rounded-2xl p-5">
+            <h2 className="text-sm font-black text-[var(--ap-text)]">6. Save & Share</h2>
+            <p className="mt-1 text-xs ap-muted">Save this analysis for future use.</p>
+            <label className="mt-4 block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] ap-muted">Analysis name</span>
+              <input className="ap-input w-full rounded-xl border px-3 py-3 text-sm" value={analysisName} onChange={(event) => setAnalysisName(event.target.value)} style={{ borderColor: "var(--ap-border)" }} />
+            </label>
+            <label className="mt-4 flex items-center gap-2 text-xs font-semibold ap-muted">
+              <input type="checkbox" />
+              Add to dashboard
+            </label>
+            <button onClick={saveAnalysis} className="ap-btn-primary mt-4 w-full rounded-xl px-4 py-3 text-xs font-black">
+              Save Analysis
+            </button>
+          </section>
+        </aside>
+      </div>
+
+      {selectedValue && (
+        <DrilldownPanel
+          selectedValue={selectedValue}
+          rows={drillRows}
+          allRows={data}
+          columns={columns}
+          xAxisCol={xAxisCol}
+          yAxisCol={yAxisCol}
+          secondaryCol={secondaryCol}
+          onClear={() => setSelectedValue(null)}
+        />
+      )}
+    </div>
   );
 
   return (
@@ -2578,62 +4951,6 @@ function InsightWorkspace({
         </button>
       </div>
       <InsightBox insight={insight} loading={loading} />
-    </section>
-  );
-}
-
-function ChatTab({
-  messages,
-  input,
-  setInput,
-  loading,
-  onSubmit,
-}: {
-  messages: ChatMessage[];
-  input: string;
-  setInput: (value: string) => void;
-  loading: boolean;
-  onSubmit: (event: React.FormEvent) => void;
-}) {
-  return (
-    <section className="ap-card border rounded-xl h-[calc(100vh-13rem)] min-h-[560px] flex flex-col overflow-hidden">
-      <div className="border-b p-4" style={{ borderColor: "var(--ap-border)" }}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-black">Data chat</h2>
-            <p className="ap-muted text-sm">Ask natural-language questions. The Python backend answers from the uploaded rows and can use OpenAI when configured.</p>
-          </div>
-          <TabInfoButton tab="Chat" />
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        {messages.length === 0 && (
-          <div className="ap-panel border rounded-xl p-5 text-sm ap-muted">
-            Try: "Which columns have missing values?", "Summarize rating", or "What actions should I take from this data?"
-          </div>
-        )}
-        {messages.map((message, index) => (
-          <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[78%] rounded-xl border p-4 text-sm leading-7 ${message.role === "user" ? "ap-btn-primary" : "ap-panel"}`}>
-              {message.role === "assistant" ? (
-                <div className="space-y-4">
-                  {message.source && <InsightSourceBadge source={message.source} />}
-                  <FormattedInsight content={message.content} />
-                </div>
-              ) : (
-                <div className="whitespace-pre-wrap">{message.content}</div>
-              )}
-            </div>
-          </div>
-        ))}
-        {loading && <div className="text-sm ap-muted">Backend is analyzing...</div>}
-      </div>
-      <form onSubmit={onSubmit} className="border-t p-4 flex gap-2" style={{ borderColor: "var(--ap-border)" }}>
-        <input className="ap-input border rounded-xl px-4 py-3 flex-1 text-sm" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ask a question about the uploaded CSV" />
-        <button className="ap-btn-primary rounded-xl px-4 py-3" disabled={loading || !input.trim()} aria-label="Send question">
-          <Send className="w-4 h-4" />
-        </button>
-      </form>
     </section>
   );
 }

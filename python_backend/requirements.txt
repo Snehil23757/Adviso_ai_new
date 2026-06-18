@@ -6,3 +6,11 @@ python-dotenv==1.2.1
 openai>=2.0.0
 numpy>=2.0.0
 scikit-learn>=1.5.0
+razorpay==2.0.1
+firebase-admin==7.1.0
+psycopg[binary]==3.3.2
+psycopg-pool==3.3.0
+redis==5.2.1
+celery[redis]==5.4.0
+email-validator==2.3.0
+dnspython==2.8.0

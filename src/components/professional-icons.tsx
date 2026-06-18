@@ -21,8 +21,10 @@ import {
   Compass,
   CreditCard as PhCreditCard,
   Cpu,
+  CurrencyInr,
   CurrencyDollar,
   Database,
+  DeviceMobile,
   DownloadSimple,
   EnvelopeSimple,
   EyeSlash,
@@ -33,6 +35,7 @@ import {
   Gauge,
   Graph,
   HardDrive,
+  InstagramLogo,
   Key,
   Leaf,
   Lightbulb,
@@ -46,6 +49,7 @@ import {
   Percent,
   Pulse,
   Question,
+  QrCode as PhQrCode,
   RocketLaunch,
   Shield,
   ShieldCheck,
@@ -65,6 +69,7 @@ import {
   User,
   Warning,
   WarningCircle,
+  XLogo,
   X as PhX,
   Lightning,
 } from "@phosphor-icons/react";
@@ -115,6 +120,7 @@ export const Layers = icon(Stack);
 export const LineChart = icon(ChartLine);
 export const Link = icon(LinkSimple);
 export const Linkedin = icon(LinkedinLogo);
+export const Instagram = icon(InstagramLogo);
 export const Lock = icon(PhLock);
 export const LogOut = icon(SignOut);
 export const Mail = icon(EnvelopeSimple);
@@ -126,6 +132,8 @@ export const Network = icon(Cloud);
 export const PieChart = icon(ChartPie);
 export const ChartDonutIcon = icon(ChartDonut);
 export { ChartDonutIcon as ChartDonut };
+export const IndianRupee = icon(CurrencyInr);
+export const QrCode = icon(PhQrCode);
 export const RefreshCw = icon(ArrowsClockwise);
 export const Rocket = icon(RocketLaunch);
 export const Search = icon(MagnifyingGlass);
@@ -134,6 +142,7 @@ export const Send = icon(PaperPlaneTilt);
 export const Server = icon(Cloud);
 export const ShieldAlert = icon(ShieldWarning);
 export const Sliders = icon(SlidersHorizontal);
+export const Smartphone = icon(DeviceMobile);
 export const Sparkles = icon(Sparkle);
 export const SunIcon = icon(Sun);
 export { SunIcon as Sun };
@@ -144,6 +153,7 @@ export { TableIcon as Table };
 export const TrendingUp = icon(TrendUp);
 export const UploadCloud = icon(UploadSimple);
 export const Workflow = icon(Graph);
+export const Twitter = icon(XLogo);
 export const X = icon(PhX, "bold");
 export const Zap = icon(Lightning);
 

@@ -87,7 +87,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           </h2>
           <p className="text-xs text-brand-text-secondary mt-1">
             {mode === "login" 
-              ? "Access dynamic what-if simulation nodes and core Gemini strategic workflows." 
+              ? "Access dynamic what-if simulation nodes and AI strategy workflows." 
               : "Register corporate data parameters to explore automated decision ledgers."}
           </p>
         </div>
@@ -220,10 +220,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             <div className="flex justify-end pt-1">
               <button 
                 type="button" 
-                onClick={() => setError("Demo system defaults: simply enter any valid email & 6-digit password to authenticate.")} 
+                onClick={() => setError("Use the password reset option on the sign-in page, or contact support if you cannot access your account.")} 
                 className="text-[10px] font-mono text-brand-primary hover:underline"
               >
-                FORGOT ACCESS DECODE?
+                FORGOT PASSWORD?
               </button>
             </div>
           )}

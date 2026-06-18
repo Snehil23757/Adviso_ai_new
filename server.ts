@@ -12,7 +12,7 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Verify secret configuration variables (e.g. Gemini API key)
+  // Verify runtime configuration for the optional Express wrapper.
   verifyConfig();
 
   // Mount API endpoints
@@ -30,8 +30,25 @@ async function startServer() {
   } else {
     console.log("Entering Production Mode: Readying Static Files and Assets...");
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(
+      "/assets",
+      express.static(path.join(distPath, "assets"), {
+        immutable: true,
+        maxAge: "1y",
+      }),
+    );
+    app.use(
+      express.static(distPath, {
+        maxAge: "1h",
+        setHeaders(res, filePath) {
+          if (filePath.endsWith("index.html")) {
+            res.setHeader("Cache-Control", "no-cache");
+          }
+        },
+      }),
+    );
     app.get("*", (req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
